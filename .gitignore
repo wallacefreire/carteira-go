@@ -1,0 +1,16 @@
+# Dados pessoais: extratos da B3 e bancos
+*.xlsx
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Binários do Go
+*.exe
+/carteira
+
+# Índice local do CodeGraph
+.codegraph/
+
+# Editor
+.vscode/
