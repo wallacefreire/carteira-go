@@ -76,7 +76,3 @@ internal/formato/      números e datas no padrão brasileiro
 ```
 
 O plano do projeto e as decisões estão em [PLANO.md](PLANO.md).
-
-## Como foi feito
-
-Projeto de aprendizado de Go. O código foi escrito com o [Claude Code](https://claude.com/claude-code) e revisado por mim.
