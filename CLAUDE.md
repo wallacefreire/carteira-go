@@ -60,13 +60,18 @@ go run ./cmd/carteira filtro [CRITÉRIO VALOR]
 - Eventos da B3: `GetListedSupplementCompany` dá desdobramento/grupamento/bonificação (por ISIN; desdobramento e bonificação em %, grupamento como multiplicador) e o nome de pregão. Os proventos dele são só de 12 meses: o histórico vem de `GetListedCashDividends` (por espécie ON/PN/UNT, `pageSize` até 120, nome de pregão com os espaços do fim).
 - Beta e volatilidade por ano: retornos diários. Coluna 12m: beta e correlação com retornos semanais de 2 anos; volatilidade dos últimos 252 pregões. Correlação: carteira com os pesos de hoje, sem o próprio ativo.
 
+- **Tesouro desligado por padrão:** os títulos do extrato hoje são de terceiros, não do Wallace. A importação pula o Tesouro até `carteira tesouro sim` (config `importar_tesouro`); depois de ligar, importar de novo traz tudo.
 - **Tesouro (Fase 3):** vem do extrato da B3 como Compra/Venda com o nome do título ("Tesouro Selic 2031"), que é o próprio código do ativo. Preço = PU de venda mais recente do CSV do Tesouro Transparente (~15 MB, baixado a cada 12 h em `dirDados/tesouro`). O extrato arredonda a quantidade para 0,01: o valor pode diferir do da corretora (corrigir com `carteira ajuste`).
 - **BTC:** só lançamento manual (`carteira compra BTC …`); preço em reais pela CoinGecko.
 - O teto por ativo **não vale para o Tesouro**. Indicadores e correlação usam só ativos da bolsa.
 - **Proventos recebidos** vêm do extrato (valor líquido). **Agenda** usa os proventos anunciados no site da B3 (últimos 12 meses, com data de pagamento), quantidade na data-com pelas operações gravadas e 15% de IR no JCP.
 
-- **Radar (Fase 4):** universo = códigos do FCA com negócio em pelo menos 90% dos pregões do último ano; um código por empresa (o mais negociado; empate: unit, PN, ON). P/L com o último fechamento do COTAHIST (sem brapi). **Nenhum critério elimina sozinho**: a nota é quantos critérios cumpre (Wallace pediu cautela nas reprovações). Limites padrão (28/10/2026): P/L 0–15, ROE 5a ≥ 12%, ROIC 5a ≥ 10%, beta ≤ 1,2, correlação ≤ 0,6, lucro em todos os anos; mudam com `carteira filtro`. Prejuízo trimestral só aparece como observação.
+- **Radar (Fase 4):** universo = códigos do FCA com negócio em pelo menos 90% dos pregões do último ano; um código por empresa (o mais negociado; empate: unit, PN, ON). P/L com o último fechamento do COTAHIST (sem brapi). **Nenhum critério elimina sozinho**: a nota é quantos critérios cumpre (Wallace pediu cautela nas reprovações). Limites padrão (28/10/2026): P/L 0–15, ROE 5a ≥ 10%, ROIC 5a ≥ 8%, beta ≤ 1,2, correlação ≤ 0,6, lucro em todos os anos; mudam com `carteira filtro`. Prejuízo trimestral só aparece como observação.
 - Cuidado conhecido: ROIC e ROE explodem quando o denominador é pequeno (empresa com muito caixa, ex.: CEBR3, PSSA3, CGAS5).
 
 ## Próximo passo (Fase 5)
-API HTTP + página web com as tabelas e os ✅/❌ do filtro. Ver [PLANO.md](PLANO.md).
+API HTTP + página web com as tabelas e os ✅/❌ do filtro, **com botão para importar o extrato da B3** (pedido do Wallace). Ver [PLANO.md](PLANO.md).
+
+Lembrete mensal: **na tela, não no Windows** (Wallace pediu). A posição mostra um aviso no topo quando o mês virou desde a última importação (config `ultima_importacao`, gravada por `carteira importar`). Na tela web: **modal** sobre tudo, fundo com blur gaussiano (`backdrop-filter: blur`), passo a passo + botão de importar; fecha no X ou clicando fora.
+
+Fase 5, acesso: **na nuvem**, aberto pela internet (PC pessoal, PC do trabalho, celular), login usuário/senha (bcrypt, sessão 30 dias, bloqueio após erros, HTTPS automático). Página em HTML/JS simples embutida com `go:embed`, sem framework; a API reaproveita os cálculos do terminal. O banco e o token ficam no servidor.

@@ -20,8 +20,9 @@ type Limites struct {
 	CorrelMax float64 // correlação semanal de 2 anos com a carteira
 }
 
-// Padrao são os limites escolhidos pelo Wallace em 28/10/2026.
-var Padrao = Limites{PLMax: 15, ROEMin: 0.12, ROICMin: 0.10, BetaMax: 1.2, CorrelMax: 0.6}
+// Padrao são os limites escolhidos pelo Wallace em 28/10/2026 (ROE e ROIC
+// mais baixos porque são médias de 5 anos, que incluem anos ruins).
+var Padrao = Limites{PLMax: 15, ROEMin: 0.10, ROICMin: 0.08, BetaMax: 1.2, CorrelMax: 0.6}
 
 // Criterio é um item do filtro já avaliado.
 type Criterio struct {

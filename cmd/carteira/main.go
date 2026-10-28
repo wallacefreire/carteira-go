@@ -33,6 +33,10 @@ Uso:
   carteira teto [PERCENTUAL]                mostra ou muda o teto por ativo (padrão 25; não vale para o Tesouro)
   carteira radar [todas]                    ações da B3 ordenadas pelo filtro (padrão: as 30 melhores)
   carteira filtro [CRITÉRIO VALOR]          mostra ou muda os limites do radar (ex.: carteira filtro roe 15)
+  carteira tesouro [sim|nao]                liga a importação do Tesouro Direto do extrato (padrão: desligado)
+  carteira ocultar <ATIVO>...               ativo de terceiros: aparece à parte, fora do total e dos pesos
+                                            ("carteira ocultar tesouro" vale para todos os títulos)
+  carteira mostrar <ATIVO>...               desfaz o ocultar
   carteira proventos [ANO]                  proventos recebidos por mês e por ativo
   carteira agenda                           proventos anunciados que ainda vão ser pagos
   carteira indicadores [ATIVO...]           indicadores dos balanços (padrão: carteira + observação)
@@ -144,6 +148,12 @@ func executar(args []string, saida io.Writer) error {
 		return a.radar(ctx, args)
 	case "filtro":
 		return a.filtro(args)
+	case "tesouro":
+		return a.mudarTesouro(args)
+	case "ocultar":
+		return a.ocultar(args)
+	case "mostrar":
+		return a.mostrar(args)
 	case "teto":
 		return a.mudarTeto(args)
 	default:

@@ -103,3 +103,24 @@ func criarExtrato(t *testing.T, caminho string, linhas [][]any) {
 		t.Fatal(err)
 	}
 }
+
+func TestAvisoImportacao(t *testing.T) {
+	banco, err := armazenamento.Abrir(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer banco.Fechar()
+	agora := time.Date(2026, 11, 3, 10, 0, 0, 0, time.Local)
+	a := &app{banco: banco, agora: func() time.Time { return agora }}
+	if a.avisoImportacao() != "" {
+		t.Error("sem registro de importação não devia avisar")
+	}
+	banco.SalvarConfigTexto("ultima_importacao", time.Date(2026, 10, 28, 12, 0, 0, 0, time.Local).Format(time.RFC3339))
+	if a.avisoImportacao() == "" {
+		t.Error("mês virou: devia avisar")
+	}
+	banco.SalvarConfigTexto("ultima_importacao", time.Date(2026, 11, 1, 9, 0, 0, 0, time.Local).Format(time.RFC3339))
+	if a.avisoImportacao() != "" {
+		t.Error("importou neste mês: não devia avisar")
+	}
+}

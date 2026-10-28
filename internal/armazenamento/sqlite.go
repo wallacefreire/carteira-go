@@ -43,6 +43,9 @@ CREATE TABLE IF NOT EXISTS proventos (
 CREATE TABLE IF NOT EXISTS observacao (
 	ticker TEXT PRIMARY KEY
 );
+CREATE TABLE IF NOT EXISTS ocultos (
+	ticker TEXT PRIMARY KEY
+);
 CREATE TABLE IF NOT EXISTS cotacoes (
 	ticker     TEXT PRIMARY KEY,
 	preco      REAL NOT NULL,
@@ -247,6 +250,40 @@ func (b *Banco) Desobservar(ticker string) (bool, error) {
 	}
 	n, err := r.RowsAffected()
 	return n > 0, err
+}
+
+// Ocultar marca um ativo como de terceiros: fica fora do total e dos pesos.
+func (b *Banco) Ocultar(ticker string) error {
+	_, err := b.db.Exec(`INSERT OR IGNORE INTO ocultos (ticker) VALUES (?)`, ticker)
+	return err
+}
+
+// Mostrar desfaz Ocultar. Devolve false se o ativo não estava oculto.
+func (b *Banco) Mostrar(ticker string) (bool, error) {
+	r, err := b.db.Exec(`DELETE FROM ocultos WHERE ticker = ?`, ticker)
+	if err != nil {
+		return false, err
+	}
+	n, err := r.RowsAffected()
+	return n > 0, err
+}
+
+// Ocultos devolve os ativos ocultos.
+func (b *Banco) Ocultos() (map[string]bool, error) {
+	rows, err := b.db.Query(`SELECT ticker FROM ocultos`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	m := map[string]bool{}
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		m[t] = true
+	}
+	return m, rows.Err()
 }
 
 // Observacao lista os ativos observados em ordem alfabética.

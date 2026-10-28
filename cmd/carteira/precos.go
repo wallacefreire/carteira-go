@@ -203,6 +203,10 @@ func (a *app) semanasCarteira(ctx context.Context, ate time.Time) (semanasCartei
 		return sc, nil, err
 	}
 	pos, _ := carteira.CalcularPosicoes(ops)
+	pos, _, err = a.separarTerceiros(pos)
+	if err != nil {
+		return sc, nil, err
+	}
 	var abertos []string
 	for t, p := range pos {
 		if p.Quantidade > 0 {

@@ -112,8 +112,10 @@ Carteira/
    - **2a (feita):** balanços da CVM (DFP/ITR), lucro, P/L atual, ROE, ROIC, dívida líquida/EBITDA e /PL e liquidez corrente: 5 anos + 12 meses + média, com memória de cálculo (`carteira explicar`).
    - **2b (feita):** histórico de preços pelo COTAHIST da B3, ajustado por proventos e desdobramentos: P/L ano a ano, beta, volatilidade e correlação com a carteira.
 3. **Fase 3 — Tesouro, BTC e dividendos (feita):** Tesouro importado do extrato e cotado pelo Tesouro Transparente; BTC lançado à mão e cotado pela CoinGecko; pesos por classe; `carteira proventos` (por mês e por ativo) e `carteira agenda` (proventos anunciados a receber).
-4. **Fase 4 — Radar (feita):** `carteira radar` e `carteira filtro`; limites: P/L até 15, ROE 5a ≥ 12%, ROIC 5a ≥ 10%, beta ≤ 1,2, correlação ≤ 0,6, lucro em todos os anos.
-5. **Fase 5 — Interface:** API HTTP + página web com as tabelas e os ✅/❌ do filtro.
+4. **Fase 4 — Radar (feita):** `carteira radar` e `carteira filtro`; limites: P/L até 15, ROE 5a ≥ 10%, ROIC 5a ≥ 8%, beta ≤ 1,2, correlação ≤ 0,6, lucro em todos os anos.
+5. **Fase 5 — Interface:** API HTTP + página web com as tabelas e os ✅/❌ do filtro. A tela precisa ter um botão para **importar o extrato da B3** (.xlsx), que faz o mesmo que `carteira importar` e mostra o resumo (novas, já existentes, avisos). Quando o mês virar sem importação, a tela abre um **card na frente de tudo** (modal), com o resto da tela desfocado (blur gaussiano), o passo a passo e o botão de importar; fecha só no **X** ou clicando fora do card.
+   - **Acesso (decidido em 28/10/2026):** hospedado **na nuvem** (24 h), aberto pela internet em qualquer aparelho (PC pessoal, PC do trabalho, celular), só com **login de usuário e senha**: senha guardada como hash bcrypt, sessão de 30 dias, bloqueio após várias tentativas erradas, HTTPS com certificado automático. 2FA pode vir depois. Hospedagem a escolher no início da fase (Fly.io, Render, Oracle Cloud). O banco e o token do brapi passam a ficar no servidor; importação pelo botão da tela.
+   - **Layout:** abas Carteira, Proventos, Agenda, Indicadores e Radar; botão Importar sempre visível; cards de resumo no topo; ⓘ abre painel lateral com a memória de cálculo; tema claro/escuro; feito para caber no celular.
 
 ## 5. Decisões
 - Teto por ativo: **25%** (muda com `carteira teto`).

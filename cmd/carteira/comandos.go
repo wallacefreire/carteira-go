@@ -8,6 +8,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -54,10 +55,20 @@ func (a *app) posicao(ctx context.Context) error {
 	}
 
 	pos, avisos := carteira.CalcularPosicoes(ops)
+	// Ativos de terceiros ("carteira ocultar") saem do total, dos pesos e do resultado.
+	pos, terceiros, err := a.separarTerceiros(pos)
+	if err != nil {
+		return err
+	}
 	var abertos []string
 	var realizado float64
 	for t, p := range pos {
 		realizado += p.Realizado
+		if p.Quantidade > 0 {
+			abertos = append(abertos, t)
+		}
+	}
+	for t, p := range terceiros {
 		if p.Quantidade > 0 {
 			abertos = append(abertos, t)
 		}
@@ -78,7 +89,11 @@ func (a *app) posicao(ctx context.Context) error {
 		return err
 	}
 
-	fmt.Fprintf(a.saida, "Carteira em %s (valores em R$)\n\n", a.agora().Format("02/01/2006 15:04"))
+	fmt.Fprintf(a.saida, "Carteira em %s (valores em R$)\n", a.agora().Format("02/01/2006 15:04"))
+	if aviso := a.avisoImportacao(); aviso != "" {
+		fmt.Fprintln(a.saida, aviso)
+	}
+	fmt.Fprintln(a.saida)
 	tw := tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', tabwriter.AlignRight)
 	fmt.Fprintln(tw, "Ativo\tQtd\tPreço médio\tCotação\tValor\tResultado\t%\tPeso\t")
 	var custoCotado float64
@@ -113,6 +128,9 @@ func (a *app) posicao(ctx context.Context) error {
 	}
 
 	if err := a.imprimirClasses(linhas, total); err != nil {
+		return err
+	}
+	if err := a.imprimirTerceiros(terceiros, precos); err != nil {
 		return err
 	}
 
@@ -167,6 +185,121 @@ func (a *app) cotacoes(ctx context.Context, tickers []string) (map[string]armaze
 	return res, notas
 }
 
+// separarTerceiros tira das posições os ativos ocultos (de terceiros).
+func (a *app) separarTerceiros(pos map[string]*carteira.Posicao) (minhas, terceiros map[string]*carteira.Posicao, err error) {
+	ocultos, err := a.banco.Ocultos()
+	if err != nil {
+		return nil, nil, err
+	}
+	minhas, terceiros = map[string]*carteira.Posicao{}, map[string]*carteira.Posicao{}
+	for t, p := range pos {
+		if ehOculto(ocultos, t) {
+			terceiros[t] = p
+		} else {
+			minhas[t] = p
+		}
+	}
+	return minhas, terceiros, nil
+}
+
+// ehOculto: "Tesouro*" oculta todos os títulos do Tesouro.
+func ehOculto(ocultos map[string]bool, t string) bool {
+	return ocultos[t] || (ocultos[todoTesouro] && carteira.EhTesouro(t))
+}
+
+const todoTesouro = "Tesouro*"
+
+func (a *app) imprimirTerceiros(terceiros map[string]*carteira.Posicao, precos map[string]float64) error {
+	linhas, total := carteira.Pesos(terceiros, precos)
+	if len(linhas) == 0 {
+		return nil
+	}
+	fmt.Fprintln(a.saida, "\nDe terceiros (fora do total, dos pesos e da correlação):")
+	tw := tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', tabwriter.AlignRight)
+	for _, l := range linhas {
+		valor := "sem cotação"
+		if l.Cotacao > 0 {
+			valor = formato.Moeda(l.Valor)
+		}
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t\n", l.Ticker, formato.Quantidade(l.Quantidade), valor)
+	}
+	if len(linhas) > 1 {
+		fmt.Fprintf(tw, "  Total\t\t%s\t\n", formato.Moeda(total))
+	}
+	return tw.Flush()
+}
+
+// ocultar marca ativos como de terceiros; "tesouro" vale para todos os títulos.
+func (a *app) ocultar(args []string) error {
+	if len(args) == 0 {
+		return errors.New(`uso: carteira ocultar <ATIVO>...  (ex.: carteira ocultar tesouro · carteira ocultar "Tesouro Selic 2031")`)
+	}
+	for _, arg := range args {
+		t, ok := nomeOculto(arg)
+		if !ok {
+			return fmt.Errorf("ativo inválido: %q", arg)
+		}
+		if err := a.banco.Ocultar(t); err != nil {
+			return err
+		}
+		fmt.Fprintf(a.saida, "%s oculto: aparece à parte, fora do total e dos pesos (desfazer: carteira mostrar %s).\n", descreverOculto(t), arg)
+	}
+	return nil
+}
+
+func (a *app) mostrar(args []string) error {
+	if len(args) == 0 {
+		return errors.New("uso: carteira mostrar <ATIVO>...")
+	}
+	for _, arg := range args {
+		t, _ := nomeOculto(arg)
+		ok, err := a.banco.Mostrar(t)
+		if err != nil {
+			return err
+		}
+		if ok {
+			fmt.Fprintf(a.saida, "%s volta a contar na carteira.\n", descreverOculto(t))
+		} else {
+			fmt.Fprintf(a.saida, "%s não estava oculto.\n", descreverOculto(t))
+		}
+	}
+	return nil
+}
+
+func nomeOculto(arg string) (string, bool) {
+	if strings.EqualFold(strings.TrimSpace(arg), "tesouro") {
+		return todoTesouro, true
+	}
+	return carteira.NormalizarAtivo(arg)
+}
+
+func descreverOculto(t string) string {
+	if t == todoTesouro {
+		return "Todo o Tesouro Direto"
+	}
+	return t
+}
+
+// avisoImportacao lembra de importar o extrato quando o mês virou desde a
+// última importação. Sem registro (bancos antigos), não avisa.
+func (a *app) avisoImportacao() string {
+	s, ok, err := a.banco.ConfigTexto("ultima_importacao")
+	if err != nil || !ok {
+		return ""
+	}
+	ultima, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return ""
+	}
+	agora := a.agora()
+	inicioMes := time.Date(agora.Year(), agora.Month(), 1, 0, 0, 0, 0, agora.Location())
+	if !ultima.Before(inicioMes) {
+		return ""
+	}
+	return fmt.Sprintf(">> Mês novo: importe o extrato de Movimentação da B3 (última importação em %s). investidor.b3.com.br > Extratos > Movimentação, depois: carteira importar movimentacao.xlsx",
+		ultima.Local().Format("02/01/2006"))
+}
+
 func (a *app) teto() (float64, error) {
 	pct, err := a.banco.ConfigNumero("teto", tetoPadrao)
 	return pct / 100, err
@@ -182,8 +315,31 @@ func (a *app) importar(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Tesouro só entra se estiver ligado ("carteira tesouro sim"): hoje os
+	// títulos do extrato são de terceiros. Ligar depois e importar de novo
+	// traz tudo, porque as linhas puladas nunca foram gravadas.
+	tesouroLigado, err := a.tesouroLigado()
+	if err != nil {
+		return err
+	}
+	if !tesouroLigado {
+		var pulados int
+		res.Operacoes = slices.DeleteFunc(res.Operacoes, func(op carteira.Operacao) bool {
+			if carteira.EhTesouro(op.Ticker) {
+				pulados++
+				return true
+			}
+			return false
+		})
+		if pulados > 0 {
+			res.Ignorados["Tesouro (desligado: carteira tesouro sim)"] += pulados
+		}
+	}
 	novasOps, novosProvs, err := a.banco.Importar(res.Operacoes, res.Proventos)
 	if err != nil {
+		return err
+	}
+	if err := a.banco.SalvarConfigTexto("ultima_importacao", a.agora().Format(time.RFC3339)); err != nil {
 		return err
 	}
 
@@ -198,6 +354,41 @@ func (a *app) importar(args []string) error {
 		imprimirLista(a.saida, "Linhas não usadas, por tipo:", linhas)
 	}
 	imprimirLista(a.saida, "Confira:", res.Avisos)
+	return nil
+}
+
+func (a *app) tesouroLigado() (bool, error) {
+	v, err := a.banco.ConfigNumero("importar_tesouro", 0)
+	return v == 1, err
+}
+
+// tesouro liga ou desliga a importação do Tesouro Direto do extrato.
+func (a *app) mudarTesouro(args []string) error {
+	if len(args) == 1 {
+		var v float64
+		switch strings.ToLower(args[0]) {
+		case "sim":
+			v = 1
+		case "nao", "não":
+			v = 0
+		default:
+			return errors.New("uso: carteira tesouro [sim|nao]")
+		}
+		if err := a.banco.SalvarConfigNumero("importar_tesouro", v); err != nil {
+			return err
+		}
+	} else if len(args) > 1 {
+		return errors.New("uso: carteira tesouro [sim|nao]")
+	}
+	ligado, err := a.tesouroLigado()
+	if err != nil {
+		return err
+	}
+	if ligado {
+		fmt.Fprintln(a.saida, "Tesouro Direto: ligado. O extrato da B3 traz as compras e vendas; importe de novo para pegar as antigas.")
+	} else {
+		fmt.Fprintln(a.saida, "Tesouro Direto: desligado. As linhas de Tesouro do extrato são puladas (ligue com: carteira tesouro sim).")
+	}
 	return nil
 }
 
