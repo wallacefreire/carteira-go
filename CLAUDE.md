@@ -74,4 +74,4 @@ API HTTP + página web com as tabelas e os ✅/❌ do filtro, **com botão para 
 
 Lembrete mensal: **na tela, não no Windows** (Wallace pediu). A posição mostra um aviso no topo quando o mês virou desde a última importação (config `ultima_importacao`, gravada por `carteira importar`). Na tela web: **modal** sobre tudo, fundo com blur gaussiano (`backdrop-filter: blur`), passo a passo + botão de importar; fecha no X ou clicando fora.
 
-Fase 5, acesso: **na nuvem**, aberto pela internet (PC pessoal, PC do trabalho, celular), login usuário/senha (bcrypt, sessão 30 dias, bloqueio após erros, HTTPS automático). Página em HTML/JS simples embutida com `go:embed`, sem framework; a API reaproveita os cálculos do terminal. O banco e o token ficam no servidor.
+Fase 5, acesso: **na nuvem** (Oracle Cloud Always Free, conta sem upgrade, VM A1.Flex Ubuntu), aberto pela internet (PC pessoal, PC do trabalho, celular), login usuário/senha (bcrypt, sessão 30 dias, bloqueio após erros, HTTPS automático). Página em HTML/JS simples embutida com `go:embed`, sem framework; a API reaproveita os cálculos do terminal. O banco e o token ficam no servidor.
