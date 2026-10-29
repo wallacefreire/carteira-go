@@ -75,3 +75,11 @@ API HTTP + página web com as tabelas e os ✅/❌ do filtro, **com botão para 
 Lembrete mensal: **na tela, não no Windows** (Wallace pediu). A posição mostra um aviso no topo quando o mês virou desde a última importação (config `ultima_importacao`, gravada por `carteira importar`). Na tela web: **modal** sobre tudo, fundo com blur gaussiano (`backdrop-filter: blur`), passo a passo + botão de importar; fecha no X ou clicando fora.
 
 Fase 5, acesso: **na nuvem** (Oracle Cloud Always Free, conta sem upgrade, VM A1.Flex Ubuntu), aberto pela internet (PC pessoal, PC do trabalho, celular), login usuário/senha (bcrypt, sessão 30 dias, bloqueio após erros, HTTPS automático). Página em HTML/JS simples embutida com `go:embed`, sem framework; a API reaproveita os cálculos do terminal. O banco e o token ficam no servidor.
+
+## Estado da hospedagem (28/10/2026)
+- Conta Oracle Cloud: tenancy `wallacecarteira`, região São Paulo (`sa-saopaulo-1`), em Free Trial. Só recursos **Always Free**, sem upgrade.
+- **Rede pronta** (criada por API): VCN `carteira-vcn` (10.0.0.0/16), sub-rede pública `carteira-publica` (10.0.0.0/24), internet gateway e rota padrão. Portas 22, 80 e 443 liberadas na security list padrão.
+- **VM ainda não criada:** `carteira`, `VM.Standard.A1.Flex` (1 OCPU, 6 GB), Ubuntu 26.04 aarch64. A Oracle responde "Out of host capacity" (no console e por API). No PC de casa, um script (SDK Python `oci`, fora do repositório) tenta criar a cada minuto.
+- As chaves (API da Oracle e SSH da VM, usuário `ubuntu`) ficam **só no PC de casa**. Nunca grave chaves no repositório.
+- Quando a VM existir: liberar 80/443 também no firewall do Ubuntu (as imagens da Oracle vêm com iptables bloqueando tudo menos SSH), compilar para o servidor com `GOOS=linux GOARCH=arm64`, serviço systemd e HTTPS automático.
+- A Fase 5 (servidor HTTP, login e página web) **ainda não foi programada**. Dá para fazer em qualquer PC, sem depender da Oracle.
