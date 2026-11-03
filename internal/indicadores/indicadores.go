@@ -76,6 +76,9 @@ type Valor struct {
 	Motivo string // por que não há valor
 	Partes []Parte
 	Nota   string // observação sobre o cálculo
+	// Periodo, quando preenchido, substitui o período da coluna na memória de
+	// cálculo (ex.: o beta de 12m usa 2 anos de preços, não a janela do balanço).
+	Periodo string
 }
 
 // Coluna é um período: um ano, os últimos 12 meses ou a média de 5 anos.

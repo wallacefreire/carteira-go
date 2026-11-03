@@ -71,8 +71,11 @@ func risco12m(col Coluna, h Historico) {
 	de2 := ate.AddDate(-2, 0, 0)
 	semanal := risco.Retornos(risco.Semanal(risco.Entre(h.Ajustado, de2, ate)))
 	periodo2 := fmt.Sprintf("retornos semanais de %s a %s", formato.Data(de2), formato.Data(ate))
-	col.Valores["beta"] = beta(semanal, risco.Retornos(risco.Semanal(risco.Entre(h.Indice, de2, ate))),
+	janela2 := formato.Data(de2) + " a " + formato.Data(ate)
+	b := beta(semanal, risco.Retornos(risco.Semanal(risco.Entre(h.Indice, de2, ate))),
 		minSemanas, "Semanas usadas", periodo2, 52, h, de2, ate)
+	b.Periodo = janela2
+	col.Valores["beta"] = b
 
 	diario := risco.Entre(h.Ajustado, ate.AddDate(-1, 0, -7), ate)
 	if len(diario) > pregoesAno+1 {
@@ -83,7 +86,9 @@ func risco12m(col Coluna, h Historico) {
 	if len(ret) > 0 {
 		periodo = fmt.Sprintf("retornos diários de %s a %s", formato.Data(diario[0].Data), formato.Data(ate))
 	}
-	col.Valores["volatilidade"] = volatilidade(ret, periodo, h, diario[0].Data, ate)
+	vol := volatilidade(ret, periodo, h, diario[0].Data, ate)
+	vol.Periodo = formato.Data(diario[0].Data) + " a " + formato.Data(ate)
+	col.Valores["volatilidade"] = vol
 
 	if len(h.Carteira) == 0 {
 		col.Valores["correlacao"] = Valor{Motivo: "carteira sem outros ativos com histórico de preços"}
@@ -95,7 +100,7 @@ func risco12m(col Coluna, h Historico) {
 		return
 	}
 	col.Valores["correlacao"] = Valor{
-		Numero: risco.Correlacao(x, y), OK: true,
+		Numero: risco.Correlacao(x, y), OK: true, Periodo: janela2,
 		Partes: []Parte{
 			{Nome: "Semanas usadas", Valor: float64(len(x))},
 			{Nome: "Volatilidade semanal anualizada do ativo", Valor: risco.Desvio(x) * math.Sqrt(52), Unidade: "%"},

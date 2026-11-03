@@ -270,7 +270,11 @@ func (a *app) explicar(ctx context.Context, args []string) error {
 
 	for _, c := range r.Colunas {
 		v := c.Valores[def.Chave]
-		fmt.Fprintf(a.saida, "\n%s (%s): ", c.Rotulo, c.Periodo)
+		periodo := c.Periodo
+		if v.Periodo != "" {
+			periodo = v.Periodo
+		}
+		fmt.Fprintf(a.saida, "\n%s (%s): ", c.Rotulo, periodo)
 		if !v.OK {
 			fmt.Fprintf(a.saida, "sem valor (%s)\n", v.Motivo)
 			continue
