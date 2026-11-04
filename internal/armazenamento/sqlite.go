@@ -86,6 +86,11 @@ func Abrir(caminho string) (*Banco, error) {
 		db.Close()
 		return nil, err
 	}
+	// Setor do FCA, guardado a partir da Fase 5 (carteira longo).
+	if err := adicionarColuna(db, "cvm_tickers", "setor", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return &Banco{db: db}, nil
 }
 

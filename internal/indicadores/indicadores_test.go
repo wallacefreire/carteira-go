@@ -233,3 +233,11 @@ func TestEVEbitda(t *testing.T) {
 		t.Error("sem valor de mercado não devia ter EV/EBITDA")
 	}
 }
+
+func TestPVP(t *testing.T) {
+	c := calc{contas: empresaExemplo()}
+	// PL dos acionistas em 31/12/2025 = 1.100 − 100 de sócios de controladas.
+	if v := c.pvp(mercado{valor: 1800}, d("2025-12-31")); !v.OK || !perto(v.Numero, 1.8) {
+		t.Errorf("P/VP = %+v, quer 1,8", v)
+	}
+}

@@ -97,10 +97,10 @@ func (b *Banco) SalvarTickers(tickers []cvm.Ticker) error {
 	}
 	defer tx.Rollback()
 	for _, t := range tickers {
-		if _, err := tx.Exec(`INSERT INTO cvm_tickers (ticker, cnpj, nome, tipo, acoes_por_unidade) VALUES (?, ?, ?, ?, ?)
+		if _, err := tx.Exec(`INSERT INTO cvm_tickers (ticker, cnpj, nome, tipo, acoes_por_unidade, setor) VALUES (?, ?, ?, ?, ?, ?)
 			ON CONFLICT(ticker) DO UPDATE SET cnpj = excluded.cnpj, nome = excluded.nome, tipo = excluded.tipo,
-				acoes_por_unidade = excluded.acoes_por_unidade`,
-			t.Codigo, t.CNPJ, t.Nome, t.Tipo, t.AcoesPorUnidade); err != nil {
+				acoes_por_unidade = excluded.acoes_por_unidade, setor = excluded.setor`,
+			t.Codigo, t.CNPJ, t.Nome, t.Tipo, t.AcoesPorUnidade, t.Setor); err != nil {
 			return err
 		}
 	}
@@ -109,8 +109,8 @@ func (b *Banco) SalvarTickers(tickers []cvm.Ticker) error {
 
 // TickerCVM devolve a empresa de um código de negociação; ok=false se não existe.
 func (b *Banco) TickerCVM(codigo string) (t cvm.Ticker, ok bool, err error) {
-	err = b.db.QueryRow(`SELECT ticker, cnpj, nome, tipo, acoes_por_unidade FROM cvm_tickers WHERE ticker = ?`, codigo).
-		Scan(&t.Codigo, &t.CNPJ, &t.Nome, &t.Tipo, &t.AcoesPorUnidade)
+	err = b.db.QueryRow(`SELECT ticker, cnpj, nome, tipo, acoes_por_unidade, setor FROM cvm_tickers WHERE ticker = ?`, codigo).
+		Scan(&t.Codigo, &t.CNPJ, &t.Nome, &t.Tipo, &t.AcoesPorUnidade, &t.Setor)
 	if err == sql.ErrNoRows {
 		return cvm.Ticker{}, false, nil
 	}
@@ -119,7 +119,7 @@ func (b *Banco) TickerCVM(codigo string) (t cvm.Ticker, ok bool, err error) {
 
 // TickersCVM devolve todos os códigos de bolsa do cadastro da CVM (ações e units).
 func (b *Banco) TickersCVM() ([]cvm.Ticker, error) {
-	rows, err := b.db.Query(`SELECT ticker, cnpj, nome, tipo, acoes_por_unidade FROM cvm_tickers ORDER BY ticker`)
+	rows, err := b.db.Query(`SELECT ticker, cnpj, nome, tipo, acoes_por_unidade, setor FROM cvm_tickers ORDER BY ticker`)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +127,7 @@ func (b *Banco) TickersCVM() ([]cvm.Ticker, error) {
 	var l []cvm.Ticker
 	for rows.Next() {
 		var t cvm.Ticker
-		if err := rows.Scan(&t.Codigo, &t.CNPJ, &t.Nome, &t.Tipo, &t.AcoesPorUnidade); err != nil {
+		if err := rows.Scan(&t.Codigo, &t.CNPJ, &t.Nome, &t.Tipo, &t.AcoesPorUnidade, &t.Setor); err != nil {
 			return nil, err
 		}
 		l = append(l, t)

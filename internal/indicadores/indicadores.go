@@ -34,6 +34,8 @@ var Lista = []Def{
 		"abaixo de 10: barato · 10 a 20: médio · acima de 20: caro (compare com o setor) · negativo: prejuízo"},
 	{"ev_ebitda", "EV/EBITDA", "x", "(valor de mercado + dívida líquida + sócios de controladas) ÷ (EBIT + depreciação e amortização); valor de mercado como no P/L",
 		"abaixo de 6: barato · 6 a 10: médio · acima de 10: caro (compare com o setor) · não serve para bancos"},
+	{"pvp", "P/VP", "x", "valor de mercado ÷ patrimônio líquido dos acionistas da empresa (fim do período); valor de mercado como no P/L",
+		"abaixo de 1: paga menos que o patrimônio · 1 a 3: comum · acima de 3: caro (ou empresa de ROE muito alto)"},
 	{"roe", "ROE", "%", "lucro líquido ÷ patrimônio líquido médio (início e fim do período)",
 		"acima de 15%: bom · 10% a 15%: ok · abaixo de 10%: fraco"},
 	{"roic", "ROIC", "%", "EBIT × (1 − 34%) ÷ (patrimônio líquido + dívida líquida)",
@@ -95,6 +97,7 @@ type Resultado struct {
 	Ticker, Nome, CNPJ string
 	Financeira         bool      // banco ou seguradora: sem EBIT nem passivo circulante
 	UltimoBalanco      time.Time // fim do período mais recente com dados
+	ValorMercado       float64   // com a cotação usada no P/L de 12m; zero se não deu para calcular
 	Colunas            []Coluna
 	Avisos             []string
 	PrejuizoTrimestral []string // trimestres com prejuízo nos 2 últimos anos e neste ano (ex.: "2T25")
@@ -141,6 +144,7 @@ func Calcular(t cvm.Ticker, contas []cvm.Conta, comps []cvm.Composicao, cot Cota
 		m := c.mercadoAno(t, comps, h, a, &r)
 		col.Valores["pl"] = pl(m, col.Valores["lucro"])
 		col.Valores["ev_ebitda"] = c.evEbitda(m, j, a.fim, r.Financeira)
+		col.Valores["pvp"] = c.pvp(m, a.fim)
 		riscoAno(col, h, a.fim.Year())
 		colunasAnuais = append(colunasAnuais, col)
 	}
@@ -152,6 +156,10 @@ func Calcular(t cvm.Ticker, contas []cvm.Conta, comps []cvm.Composicao, cot Cota
 	m12 := c.valorMercado(t, comps, cot, time.Time{}, anos[len(anos)-1], &r)
 	col12.Valores["pl"] = pl(m12, col12.Valores["lucro"])
 	col12.Valores["ev_ebitda"] = c.evEbitda(m12, j12, fim12, r.Financeira)
+	col12.Valores["pvp"] = c.pvp(m12, fim12)
+	if m12.motivo == "" {
+		r.ValorMercado = m12.valor
+	}
 	risco12m(col12, h)
 	r.Colunas = append(r.Colunas, col12)
 	r.Colunas = append(r.Colunas, media(colunasAnuais))
@@ -558,6 +566,21 @@ func pl(m mercado, lucro Valor) Valor {
 		return Valor{Motivo: m.motivo}
 	}
 	return dividir(m.valor, lucro.Numero, concat(m.partes, lucro.Partes), m.nota)
+}
+
+// pvp = valor de mercado ÷ PL dos acionistas da empresa (sem sócios de controladas).
+func (c calc) pvp(m mercado, fim time.Time) Valor {
+	if m.motivo != "" {
+		return Valor{Motivo: m.motivo}
+	}
+	pl, partes, ok := c.plControladora(fim)
+	if !ok {
+		return Valor{Motivo: motivoSemDado}
+	}
+	if pl <= 0 {
+		return Valor{Motivo: "patrimônio negativo ou zero", Partes: partes}
+	}
+	return dividir(m.valor, pl, concat(m.partes, partes), m.nota)
 }
 
 // evEbitda = (valor de mercado + dívida líquida + PL de sócios de controladas)

@@ -125,6 +125,7 @@ type Ticker struct {
 	Nome            string
 	Tipo            string  // como vem da CVM: Ações Ordinárias, Ações Preferenciais, Units
 	AcoesPorUnidade float64 // 1 para ON/PN; soma da composição para units (TAEE11 = 3); 0 se desconhecido
+	Setor           string  // setor de atividade do FCA, sem o "Emp. Adm. Part. - " das holdings
 }
 
 var reArquivoDemonstracao = regexp.MustCompile(`^(dfp|itr)_cia_aberta_(DRE|BPA|BPP|DVA)_(con|ind)_\d{4}\.csv$`)
@@ -342,13 +343,19 @@ func lerComposicao(f *zip.File) ([]Composicao, error) {
 
 var reNumero = regexp.MustCompile(`\d+`)
 
-// LerTickers lê os códigos de negociação de ações e units do FCA.
+// LerTickers lê os códigos de negociação de ações e units do FCA, com o
+// setor da empresa (arquivo "geral" do mesmo .zip).
 func LerTickers(caminho string) ([]Ticker, error) {
 	z, err := zip.OpenReader(caminho)
 	if err != nil {
 		return nil, fmt.Errorf("abrir %s: %w", filepath.Base(caminho), err)
 	}
 	defer z.Close()
+
+	setores, err := lerSetores(z.File)
+	if err != nil {
+		return nil, err
+	}
 
 	for _, f := range z.File {
 		if !strings.Contains(f.Name, "_valor_mobiliario_") {
@@ -387,6 +394,7 @@ func LerTickers(caminho string) ([]Ticker, error) {
 				continue
 			}
 			t := Ticker{Codigo: codigo, CNPJ: campo("CNPJ_Companhia"), Nome: campo("Nome_Empresarial"), Tipo: tipo}
+			t.Setor = setores[t.CNPJ]
 			switch formato.Normalizar(tipo) {
 			case "acoes ordinarias", "acoes preferenciais":
 				t.AcoesPorUnidade = 1
@@ -411,6 +419,56 @@ func LerTickers(caminho string) ([]Ticker, error) {
 		return tickers, nil
 	}
 	return nil, errors.New("arquivo de valores mobiliários não encontrado no FCA")
+}
+
+// lerSetores devolve o setor de cada CNPJ, da versão mais nova do formulário.
+// Holding ("Emp. Adm. Part. - Energia Elétrica") conta no setor das controladas.
+func lerSetores(arquivos []*zip.File) (map[string]string, error) {
+	setores := map[string]string{}
+	for _, f := range arquivos {
+		if !strings.Contains(f.Name, "_geral_") {
+			continue
+		}
+		r, col, rc, err := abrirCSV(f)
+		if err != nil {
+			return nil, err
+		}
+		defer rc.Close()
+		versoes := map[string]int{}
+		for {
+			l, err := r.Read()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return nil, err
+			}
+			campo := func(n string) string {
+				i, ok := col[n]
+				if !ok || i >= len(l) {
+					return ""
+				}
+				return strings.TrimSpace(l[i])
+			}
+			cnpj := campo("CNPJ_Companhia")
+			versao, _ := strconv.Atoi(campo("Versao"))
+			if v, ok := versoes[cnpj]; ok && v > versao {
+				continue
+			}
+			versoes[cnpj] = versao
+			setores[cnpj] = NormalizarSetor(campo("Setor_Atividade"))
+		}
+	}
+	return setores, nil
+}
+
+// NormalizarSetor tira o prefixo de holding do setor do FCA.
+func NormalizarSetor(s string) string {
+	s = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(s), "Emp. Adm. Part. -"))
+	if s == "Sem Setor Principal" {
+		return "Holding de vários setores"
+	}
+	return s
 }
 
 func lerData(s string) (time.Time, error) { return time.Parse("2006-01-02", strings.TrimSpace(s)) }
