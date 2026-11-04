@@ -332,7 +332,7 @@ $("#painel .fechar").onclick = fecharPainel;
 
 // ---------- Radar ----------
 // radarMinimo: nota mínima mostrada (quantos critérios cumpre); 0 = todas.
-let radarMinimo = 4, radarBusca = "";
+let radarMinimo = 6, radarBusca = "";
 // Ordenação do radar: coluna "nota" (padrão do servidor), "ativo", "ev" ou o índice do critério.
 let radarOrdem = { col: "nota", cresce: false };
 
@@ -345,12 +345,15 @@ function chaveRadar(i, col) {
   if (col === "ativo") return i.ticker;
   if (col === "nota") return i.total ? i.cumpridos / i.total : 0;
   if (col === "ev") return numeroBR(i.evEbitda);
+  if (col === "pvp") return numeroBR(i.pvp);
+  if (col === "fila") return numeroBR(i.fila);
+  if (col === "setor") return i.setor || null;
   const c = i.criterios[col];
   return c && !c.naoAplica ? numeroBR(c.valor) : null;
 }
 function ordenarRadar(itens) {
   const { col, cresce } = radarOrdem;
-  if (col === "nota" && !cresce) return itens; // o servidor já manda na ordem da nota (e P/L no empate)
+  if (col === "nota" && !cresce) return itens; // o servidor já manda na ordem da nota (e fila no empate)
   return [...itens].sort((x, y) => {
     const a = chaveRadar(x, col), b = chaveRadar(y, col);
     if (a === null && b === null) return 0;
@@ -388,12 +391,12 @@ async function abaRadar() {
   let h = `<div class="linha-form"><input type="text" id="busca-radar" placeholder="Procurar ativo ou empresa" value="${esc(radarBusca)}">
     <select id="radar-minimo" title="Esconde as de nota baixa">${opcoes.join("")}</select><button id="radar-atualizar">Calcular de novo</button></div>`;
   h += `<section class="bloco"><h2>Radar <small>${esc(d.data)} · ${d.analisadas} empresas · ${d.semLiquidez} códigos sem liquidez ficaram fora · preços até ${esc(d.precosAte)}</small></h2>
-    <div class="rolagem"><table id="tabela-radar"><thead><tr>${cabecalhoRadar("Ativo", "ativo", "left")}${cabecalhoRadar("Nota", "nota")}${d.criterios.map((c, ic) => cabecalhoRadar(c, ic)).join("")}${cabecalhoRadar("EV/EBITDA", "ev")}<th style="text-align:left">Obs.</th></tr></thead><tbody>`;
+    <div class="rolagem"><table id="tabela-radar"><thead><tr>${cabecalhoRadar("Ativo", "ativo", "left")}${cabecalhoRadar("Nota", "nota")}${d.criterios.map((c, ic) => cabecalhoRadar(c, ic)).join("")}${cabecalhoRadar("EV/EBITDA", "ev")}${cabecalhoRadar("P/VP", "pvp")}${cabecalhoRadar("Fila", "fila")}${cabecalhoRadar("Setor", "setor", "left")}<th style="text-align:left">Obs.</th></tr></thead><tbody>`;
   for (const i of itens) {
     h += `<tr><td title="${esc(i.nome)}">${esc(i.ticker)}${i.naCarteira ? ` <span class="etiqueta">na carteira</span>` : ""}</td><td class="nota-radar">${i.cumpridos}/${i.total}</td>
-      ${i.criterios.map((c) => `<td class="${c.naoAplica ? "sem" : c.ok ? "ok" : "nok"}">${esc(c.valor)} ${c.naoAplica ? "" : c.ok ? "✓" : "✗"}</td>`).join("")}<td class="sem">${esc(i.evEbitda || "-")}</td><td style="text-align:left">${esc(i.obs)}</td></tr>`;
+      ${i.criterios.map((c) => `<td class="${c.naoAplica ? "sem" : c.ok ? "ok" : "nok"}">${esc(c.valor)} ${c.naoAplica ? "" : c.ok ? "✓" : "✗"}</td>`).join("")}<td class="sem">${esc(i.evEbitda || "-")}</td><td class="sem">${esc(i.pvp || "-")}</td><td class="sem">${esc(i.fila || "-")}</td><td class="sem" style="text-align:left">${esc(i.setor || "-")}</td><td style="text-align:left">${esc(i.obs)}</td></tr>`;
   }
-  h += `</tbody></table></div><p class="legenda">${busca ? "Na busca aparecem todas as notas. " : itens.length ? "" : "Nenhuma ação com essa nota. "}Nenhum critério elimina sozinho: a nota é quantos o ativo cumpre · n/a = não se aplica (ROIC de banco) · EV/EBITDA é só informativo, não entra na nota · P/L com o último fechamento do COTAHIST · limites: <code>carteira filtro</code></p>${lista("Observações", d.notas)}</section>`;
+  h += `</tbody></table></div><p class="legenda">${busca ? "Na busca aparecem todas as notas. " : itens.length ? "" : "Nenhuma ação com essa nota. "}Nenhum critério elimina sozinho: a nota é quantos o ativo cumpre · n/a = não se aplica (ROIC e dívida de banco) · na mesma nota, menor fila primeiro (40% ROIC de 3 anos, 40% preço: P/L e P/VP, 20% beta) · EV/EBITDA, P/VP e setor não entram na nota · P/L com o último fechamento do COTAHIST · limites: <code>carteira filtro</code></p>${lista("Observações", d.notas)}</section>`;
   $("#conteudo").innerHTML = h;
   const b = $("#busca-radar");
   b.oninput = () => { radarBusca = b.value; abaRadar(); const nb = $("#busca-radar"); nb.focus(); nb.setSelectionRange(nb.value.length, nb.value.length); };
@@ -402,8 +405,8 @@ async function abaRadar() {
     const th = ev.target.closest("th[data-col]");
     if (!th) return;
     const col = /^\d+$/.test(th.dataset.col) ? Number(th.dataset.col) : th.dataset.col;
-    // 1º clique: do maior para o menor (nota, ROE…), exceto ativo, P/L, EV/EBITDA, beta e correlação, em que menor é melhor.
-    const menorPrimeiro = col === "ativo" || col === "ev" || (typeof col === "number" && /P\/L|beta|correl/i.test(d.criterios[col]));
+    // 1º clique: do maior para o menor (nota, ROE…), exceto texto e os números em que menor é melhor (P/L, dívida, beta, fila…).
+    const menorPrimeiro = ["ativo", "ev", "pvp", "fila", "setor"].includes(col) || (typeof col === "number" && /P\/L|beta|correl|d[ií]vida/i.test(d.criterios[col]));
     radarOrdem = radarOrdem.col === col ? { col, cresce: !radarOrdem.cresce } : { col, cresce: menorPrimeiro };
     abaRadar();
   };

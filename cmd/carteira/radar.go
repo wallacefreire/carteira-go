@@ -1,10 +1,10 @@
 package main
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"text/tabwriter"
@@ -27,16 +27,18 @@ const radarTopo = 30
 // itemFiltro liga o nome usado no comando à chave no banco.
 type itemFiltro struct {
 	nome, descricao string
-	pct             bool // guardado como fração, mostrado em %
+	unidade         string // "%": guardado como fração; "bi": guardado em R$, digitado em bilhões
 	campo           func(*radar.Limites) *float64
 }
 
 var itensFiltro = []itemFiltro{
-	{"pl", "P/L máximo (12 meses)", false, func(l *radar.Limites) *float64 { return &l.PLMax }},
-	{"roe", "ROE mínimo (média de 5 anos)", true, func(l *radar.Limites) *float64 { return &l.ROEMin }},
-	{"roic", "ROIC mínimo (média de 5 anos; não vale para bancos)", true, func(l *radar.Limites) *float64 { return &l.ROICMin }},
-	{"beta", "Beta máximo (semanal, 2 anos)", false, func(l *radar.Limites) *float64 { return &l.BetaMax }},
-	{"correlacao", "Correlação máxima com a carteira (semanal, 2 anos)", false, func(l *radar.Limites) *float64 { return &l.CorrelMax }},
+	{"pl", "P/L máximo (12 meses)", "", func(l *radar.Limites) *float64 { return &l.PLMax }},
+	{"roe", "ROE mínimo (média de 5 anos)", "%", func(l *radar.Limites) *float64 { return &l.ROEMin }},
+	{"roic", "ROIC mínimo (média de 5 anos; não vale para bancos)", "%", func(l *radar.Limites) *float64 { return &l.ROICMin }},
+	{"divida", "Dívida líquida ÷ EBITDA máxima (12 meses; não vale para bancos)", "", func(l *radar.Limites) *float64 { return &l.DividaMax }},
+	{"valor", "Valor de mercado mínimo (R$ bilhões)", "bi", func(l *radar.Limites) *float64 { return &l.ValorMin }},
+	{"beta", "Beta máximo (semanal, 2 anos)", "", func(l *radar.Limites) *float64 { return &l.BetaMax }},
+	{"correlacao", "Correlação máxima com a carteira (semanal, 2 anos)", "", func(l *radar.Limites) *float64 { return &l.CorrelMax }},
 }
 
 func (a *app) limites() (radar.Limites, error) {
@@ -62,8 +64,11 @@ func (a *app) filtro(args []string) error {
 		if i < 0 {
 			return fmt.Errorf("critério desconhecido %q", args[0])
 		}
-		if itensFiltro[i].pct {
+		switch itensFiltro[i].unidade {
+		case "%":
 			v /= 100 // o usuário digita 12 para 12%
+		case "bi":
+			v *= 1e9 // o usuário digita 1 para R$ 1 bi
 		}
 		if err := a.banco.SalvarConfigNumero("filtro_"+itensFiltro[i].nome, v); err != nil {
 			return err
@@ -79,8 +84,11 @@ func (a *app) filtro(args []string) error {
 	for _, it := range itensFiltro {
 		v := *it.campo(&lim)
 		txt := formato.Numero(v, 2)
-		if it.pct {
+		switch it.unidade {
+		case "%":
 			txt = formato.Pct(v)
+		case "bi":
+			txt = formato.Numero(v/1e9, 1) + " bi"
 		}
 		fmt.Fprintf(a.saida, "  %-11s %-8s %s\n", it.nome, txt, it.descricao)
 	}
@@ -105,6 +113,9 @@ type itemRadar struct {
 	Total      int             `json:"total"`
 	Criterios  []criterioRadar `json:"criterios"`
 	EVEbitda   string          `json:"evEbitda"` // só informativo, fora da nota
+	PVP        string          `json:"pvp"`      // só informativo
+	Setor      string          `json:"setor"`
+	Fila       string          `json:"fila"` // desempate entre notas iguais; menor = melhor
 	Obs        string          `json:"obs"`
 }
 
@@ -143,7 +154,7 @@ func (a *app) radar(ctx context.Context, args []string) error {
 		d.Data, d.Analisadas, d.SemLiquidez, d.PrecosAte)
 	tw := tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', 0)
 	cab := append([]string{"Ativo", "Nota"}, d.Criterios...)
-	fmt.Fprintln(tw, strings.Join(append(cab, "EV/EBITDA", "Obs."), "\t"))
+	fmt.Fprintln(tw, strings.Join(append(cab, "EV/EBITDA", "P/VP", "Fila", "Setor", "Obs."), "\t"))
 	for _, it := range mostrar {
 		nome := it.Ticker
 		if it.NaCarteira {
@@ -160,7 +171,7 @@ func (a *app) radar(ctx context.Context, args []string) error {
 			}
 			linha = append(linha, c.Valor+marca)
 		}
-		linha = append(linha, it.EVEbitda, it.Obs)
+		linha = append(linha, it.EVEbitda, it.PVP, it.Fila, it.Setor, it.Obs)
 		fmt.Fprintln(tw, strings.Join(linha, "\t"))
 	}
 	if err := tw.Flush(); err != nil {
@@ -169,7 +180,8 @@ func (a *app) radar(ctx context.Context, args []string) error {
 	if !todas && len(d.Itens) > radarTopo {
 		fmt.Fprintf(a.saida, "\nMostrando as %d melhores de %d. Para ver todas: carteira radar todas\n", radarTopo, len(d.Itens))
 	}
-	fmt.Fprintln(a.saida, "\n* = já na carteira · nenhum critério elimina sozinho: a nota é quantos o ativo cumpre · n/a = não se aplica (ROIC e EV/EBITDA de banco) · EV/EBITDA é só informativo")
+	fmt.Fprintln(a.saida, "\n* = já na carteira · nenhum critério elimina sozinho: a nota é quantos o ativo cumpre · n/a = não se aplica (ROIC, dívida e EV/EBITDA de banco)")
+	fmt.Fprintln(a.saida, "Na mesma nota, menor fila primeiro: 40% ROIC de 3 anos (ROE em banco), 40% preço (75% P/L, 25% P/VP), 20% beta · EV/EBITDA, P/VP e setor são só informativos")
 	fmt.Fprintln(a.saida, "P/L com o fechamento do último pregão do COTAHIST · limites: carteira filtro · conta de um número: carteira explicar <ATIVO> <indicador>")
 	return nil
 }
@@ -203,6 +215,15 @@ func (a *app) dadosRadar(ctx context.Context) (dadosRadar, error) {
 	tks, err := a.banco.TickersCVM()
 	if err != nil {
 		return d, err
+	}
+	// Banco de antes do setor: baixa o FCA de novo uma vez para preenchê-lo.
+	if !slices.ContainsFunc(tks, func(t cvm.Ticker) bool { return t.Setor != "" }) {
+		if err := a.atualizarCVM(ctx); err != nil {
+			return d, err
+		}
+		if tks, err = a.banco.TickersCVM(); err != nil {
+			return d, err
+		}
 	}
 	porEmpresa := map[string]candidato{}
 	semLiquidez := 0
@@ -256,14 +277,11 @@ func (a *app) dadosRadar(ctx context.Context) (dadosRadar, error) {
 		if len(r.Colunas) == 0 {
 			continue // sem balanço anual
 		}
-		avs = append(avs, radar.Avaliar(r, lim))
+		av := radar.Avaliar(r, lim)
+		av.Setor = c.tk.Setor
+		avs = append(avs, av)
 	}
-	slices.SortFunc(avs, func(x, y radar.Avaliacao) int {
-		if c := cmp.Compare(y.Nota(), x.Nota()); c != 0 {
-			return c
-		}
-		return cmp.Compare(plOrdem(x.PL), plOrdem(y.PL))
-	})
+	radar.Ordenar(avs)
 
 	if len(avs) == 0 {
 		return d, errors.New("nenhuma empresa com balanço e preços para avaliar")
@@ -273,7 +291,11 @@ func (a *app) dadosRadar(ctx context.Context) (dadosRadar, error) {
 		d.Criterios = append(d.Criterios, c.Nome)
 	}
 	for _, av := range avs {
-		it := itemRadar{Ticker: av.Ticker, Nome: av.Nome, NaCarteira: carteiraHoje[av.Ticker], Cumpridos: av.Cumpridos, Total: av.Total, EVEbitda: av.EVEbitda}
+		it := itemRadar{Ticker: av.Ticker, Nome: av.Nome, NaCarteira: carteiraHoje[av.Ticker], Cumpridos: av.Cumpridos, Total: av.Total,
+			EVEbitda: av.EVEbitda, PVP: av.PVP, Setor: av.Setor, Fila: "-"}
+		if !math.IsInf(av.Fila, 1) {
+			it.Fila = formato.Numero(av.Fila, 1)
+		}
 		for _, c := range av.Criterios {
 			it.Criterios = append(it.Criterios, criterioRadar{Nome: c.Nome, Valor: c.Valor, OK: c.OK, NaoAplica: c.NaoAplica})
 		}
@@ -299,12 +321,4 @@ func preferencia(codigo string) int {
 		return 2
 	}
 	return 1
-}
-
-// plOrdem põe P/L negativo ou sem dado no fim.
-func plOrdem(pl float64) float64 {
-	if pl <= 0 {
-		return 1e9
-	}
-	return pl
 }
