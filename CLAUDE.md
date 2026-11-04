@@ -23,6 +23,7 @@ go run ./cmd/carteira proventos [ANO]
 go run ./cmd/carteira agenda
 go run ./cmd/carteira radar [todas]
 go run ./cmd/carteira filtro [CRITÉRIO VALOR]
+go run ./cmd/carteira web                  # tela em http://localhost:8080
 ```
 `BRAPI_TOKEN` fica salvo no ambiente do usuário do Windows (registro `HKCU\Environment`). Em shell novo sem a variável, leia de lá. Nunca grave o token em arquivo.
 
@@ -69,8 +70,9 @@ go run ./cmd/carteira filtro [CRITÉRIO VALOR]
 - **Radar (Fase 4):** universo = códigos do FCA com negócio em pelo menos 90% dos pregões do último ano; um código por empresa (o mais negociado; empate: unit, PN, ON). P/L com o último fechamento do COTAHIST (sem brapi). **Nenhum critério elimina sozinho**: a nota é quantos critérios cumpre (Wallace pediu cautela nas reprovações). Limites padrão (28/10/2026): P/L 0–15, ROE 5a ≥ 10%, ROIC 5a ≥ 8%, beta ≤ 1,2, correlação ≤ 0,6, lucro em todos os anos; mudam com `carteira filtro`. Prejuízo trimestral só aparece como observação.
 - Cuidado conhecido: ROIC e ROE explodem quando o denominador é pequeno (empresa com muito caixa, ex.: CEBR3, PSSA3, CGAS5).
 
-## Próximo passo (Fase 5)
-API HTTP + página web com as tabelas e os ✅/❌ do filtro, **com botão para importar o extrato da B3** (pedido do Wallace). Ver [PLANO.md](PLANO.md).
+## Fase 5 (em andamento)
+**Feito (03/11/2026):** `carteira web [PORTA]` abre a tela em http://localhost:8080, só neste PC (127.0.0.1, sem login). `cmd/carteira/web.go` tem a API (`/api/posicao`, `proventos`, `agenda`, `indicadores?ativos=`, `radar`, `POST /api/importar`) e `web/index.html` (embutido com `go:embed`) as abas, o modal de mês novo e o painel ⓘ com a memória de cálculo. Cada comando tem uma função `dadosX` que monta os dados já formatados; o terminal e a tela usam a mesma, então os números são iguais. Um pedido por vez (mutex) e um `app` novo por pedido (caches de uma execução só).
+**Falta:** login (bcrypt, sessão 30 dias, bloqueio) e acesso pela internet. Hospedagem em aberto: a VM da Oracle não sai ("Out of host capacity"); alternativa pesquisada é deixar neste PC com Tailscale Funnel. Ver [PLANO.md](PLANO.md).
 
 Lembrete mensal: **na tela, não no Windows** (Wallace pediu). A posição mostra um aviso no topo quando o mês virou desde a última importação (config `ultima_importacao`, gravada por `carteira importar`). Na tela web: **modal** sobre tudo, fundo com blur gaussiano (`backdrop-filter: blur`), passo a passo + botão de importar; fecha no X ou clicando fora.
 
@@ -82,4 +84,4 @@ Fase 5, acesso: **na nuvem** (Oracle Cloud Always Free, conta sem upgrade, VM A1
 - **VM ainda não criada:** `carteira`, `VM.Standard.A1.Flex` (1 OCPU, 6 GB), Ubuntu 26.04 aarch64. A Oracle responde "Out of host capacity" (no console e por API). No PC de casa, um script (SDK Python `oci`, fora do repositório) tenta criar a cada minuto.
 - As chaves (API da Oracle e SSH da VM, usuário `ubuntu`) ficam **só no PC de casa**. Nunca grave chaves no repositório.
 - Quando a VM existir: liberar 80/443 também no firewall do Ubuntu (as imagens da Oracle vêm com iptables bloqueando tudo menos SSH), compilar para o servidor com `GOOS=linux GOARCH=arm64`, serviço systemd e HTTPS automático.
-- A Fase 5 (servidor HTTP, login e página web) **ainda não foi programada**. Dá para fazer em qualquer PC, sem depender da Oracle.
+- A tela web já existe (ver "Fase 5 (em andamento)"); falta login e hospedagem, que não dependem da Oracle para serem programados.

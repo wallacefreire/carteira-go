@@ -44,21 +44,69 @@ type app struct {
 
 // ---------- posição ----------
 
-func (a *app) posicao(ctx context.Context) error {
+// linhaPosicao é uma linha da tabela de posição, já formatada ("-" sem cotação).
+type linhaPosicao struct {
+	Ticker       string  `json:"ticker"`
+	Qtd          string  `json:"qtd"`
+	PrecoMedio   string  `json:"precoMedio"`
+	Cotacao      string  `json:"cotacao"`
+	Valor        string  `json:"valor"`
+	Resultado    string  `json:"resultado"`
+	ResultadoPct string  `json:"resultadoPct"`
+	Peso         string  `json:"peso"`
+	PesoNum      float64 `json:"pesoNum"`      // fração, para a barra de peso na tela
+	ResultadoNum float64 `json:"resultadoNum"` // para a cor (ganho ou perda)
+	AcimaTeto    bool    `json:"acimaTeto"`
+}
+
+// itemValor é um nome com valor (classe, tipo de provento, ativo de terceiros).
+type itemValor struct {
+	Nome  string `json:"nome"`
+	Qtd   string `json:"qtd,omitempty"`
+	Valor string `json:"valor"`
+	Pct   string `json:"pct,omitempty"`
+}
+
+// dadosPosicao é tudo o que a posição mostra, no terminal ou na tela web.
+type dadosPosicao struct {
+	Vazia             bool           `json:"vazia"`
+	Data              string         `json:"data"`
+	Aviso             string         `json:"aviso"` // mês novo sem importação
+	MesNovo           bool           `json:"mesNovo"`
+	Teto              string         `json:"teto"`
+	Linhas            []linhaPosicao `json:"linhas"`
+	Total             string         `json:"total"`
+	ResultadoTotal    string         `json:"resultadoTotal"`
+	ResultadoTotalPct string         `json:"resultadoTotalPct"`
+	ResultadoTotalNum float64        `json:"resultadoTotalNum"`
+	Classes           []itemValor    `json:"classes"`
+	Terceiros         []itemValor    `json:"terceiros"`
+	TotalTerceiros    string         `json:"totalTerceiros"`
+	Realizado         string         `json:"realizado"`
+	Proventos         string         `json:"proventos"`
+	Notas             []string       `json:"notas"`  // sobre as cotações
+	Avisos            []string       `json:"avisos"` // sobre as operações
+}
+
+func (a *app) dadosPosicao(ctx context.Context) (dadosPosicao, error) {
+	d := dadosPosicao{Data: a.agora().Format("02/01/2006 15:04")}
+	d.Aviso = a.avisoImportacao()
+	d.MesNovo = d.Aviso != ""
 	ops, err := a.banco.Operacoes("")
 	if err != nil {
-		return err
+		return d, err
 	}
 	if len(ops) == 0 {
-		fmt.Fprintln(a.saida, "Carteira vazia. Importe o extrato da B3: carteira importar <movimentacao.xlsx>")
-		return nil
+		d.Vazia = true
+		return d, nil
 	}
 
 	pos, avisos := carteira.CalcularPosicoes(ops)
+	d.Avisos = avisos
 	// Ativos de terceiros ("carteira ocultar") saem do total, dos pesos e do resultado.
 	pos, terceiros, err := a.separarTerceiros(pos)
 	if err != nil {
-		return err
+		return d, err
 	}
 	var abertos []string
 	var realizado float64
@@ -83,65 +131,122 @@ func (a *app) posicao(ctx context.Context) error {
 	if len(cots) < len(abertos) {
 		notas = append(notas, "Ativos sem cotação ficam fora do total e dos pesos.")
 	}
+	d.Notas = notas
 	linhas, total := carteira.Pesos(pos, precos)
 	teto, err := a.teto()
 	if err != nil {
-		return err
+		return d, err
 	}
+	d.Teto = formato.Pct(teto)
 
-	fmt.Fprintf(a.saida, "Carteira em %s (valores em R$)\n", a.agora().Format("02/01/2006 15:04"))
-	if aviso := a.avisoImportacao(); aviso != "" {
-		fmt.Fprintln(a.saida, aviso)
-	}
-	fmt.Fprintln(a.saida)
-	tw := tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', tabwriter.AlignRight)
-	fmt.Fprintln(tw, "Ativo\tQtd\tPreço médio\tCotação\tValor\tResultado\t%\tPeso\t")
 	var custoCotado float64
 	for _, l := range linhas {
-		cot, valor, res, resPct, peso, alerta := "-", "-", "-", "-", "-", ""
+		lp := linhaPosicao{Ticker: l.Ticker, Qtd: formato.Quantidade(l.Quantidade), PrecoMedio: formato.Moeda(l.PrecoMedio()),
+			Cotacao: "-", Valor: "-", Resultado: "-", ResultadoPct: "-", Peso: "-"}
 		if l.Cotacao > 0 {
 			custoCotado += l.Custo
-			cot = formato.Moeda(l.Cotacao)
-			valor = formato.Moeda(l.Valor)
-			res = formato.Moeda(l.Valor - l.Custo)
+			lp.Cotacao = formato.Moeda(l.Cotacao)
+			lp.Valor = formato.Moeda(l.Valor)
+			lp.ResultadoNum = l.Valor - l.Custo
+			lp.Resultado = formato.Moeda(lp.ResultadoNum)
 			if l.Custo > 0 {
-				resPct = formato.Pct((l.Valor - l.Custo) / l.Custo)
+				lp.ResultadoPct = formato.Pct((l.Valor - l.Custo) / l.Custo)
 			}
-			peso = formato.Pct(l.Peso)
-			if l.Peso > teto && !carteira.EhTesouro(l.Ticker) {
-				alerta = "  acima do teto de " + formato.Pct(teto)
-			}
+			lp.Peso = formato.Pct(l.Peso)
+			lp.PesoNum = l.Peso
+			lp.AcimaTeto = l.Peso > teto && !carteira.EhTesouro(l.Ticker)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", l.Ticker, formato.Quantidade(l.Quantidade),
-			formato.Moeda(l.PrecoMedio()), cot, valor, res, resPct, peso, alerta)
+		d.Linhas = append(d.Linhas, lp)
 	}
-	resTotal, resTotalPct := "-", "-"
+	d.Total, d.ResultadoTotal, d.ResultadoTotalPct = formato.Moeda(total), "-", "-"
 	if total > 0 {
-		resTotal = formato.Moeda(total - custoCotado)
+		d.ResultadoTotalNum = total - custoCotado
+		d.ResultadoTotal = formato.Moeda(d.ResultadoTotalNum)
 		if custoCotado > 0 {
-			resTotalPct = formato.Pct((total - custoCotado) / custoCotado)
+			d.ResultadoTotalPct = formato.Pct((total - custoCotado) / custoCotado)
 		}
 	}
-	fmt.Fprintf(tw, "Total\t\t\t\t%s\t%s\t%s\t\t\n", formato.Moeda(total), resTotal, resTotalPct)
-	if err := tw.Flush(); err != nil {
-		return err
-	}
+	d.Classes = a.classes(linhas, total)
 
-	if err := a.imprimirClasses(linhas, total); err != nil {
-		return err
+	lt, totalTerceiros := carteira.Pesos(terceiros, precos)
+	for _, l := range lt {
+		valor := "sem cotação"
+		if l.Cotacao > 0 {
+			valor = formato.Moeda(l.Valor)
+		}
+		d.Terceiros = append(d.Terceiros, itemValor{Nome: l.Ticker, Qtd: formato.Quantidade(l.Quantidade), Valor: valor})
 	}
-	if err := a.imprimirTerceiros(terceiros, precos); err != nil {
-		return err
+	if len(lt) > 1 {
+		d.TotalTerceiros = formato.Moeda(totalTerceiros)
 	}
 
 	proventos, err := a.banco.TotalProventos()
 	if err != nil {
+		return d, err
+	}
+	d.Realizado = formato.Moeda(realizado)
+	d.Proventos = formato.Moeda(proventos)
+	return d, nil
+}
+
+func (a *app) posicao(ctx context.Context) error {
+	d, err := a.dadosPosicao(ctx)
+	if err != nil {
 		return err
 	}
-	fmt.Fprintf(a.saida, "\nResultado das vendas já feitas: R$ %s\n", formato.Moeda(realizado))
-	fmt.Fprintf(a.saida, "Proventos recebidos: R$ %s (detalhe: carteira proventos · a receber: carteira agenda)\n", formato.Moeda(proventos))
-	imprimirLista(a.saida, "Cotações:", notas)
-	imprimirLista(a.saida, "Confira:", avisos)
+	if d.Vazia {
+		fmt.Fprintln(a.saida, "Carteira vazia. Importe o extrato da B3: carteira importar <movimentacao.xlsx>")
+		return nil
+	}
+
+	fmt.Fprintf(a.saida, "Carteira em %s (valores em R$)\n", d.Data)
+	if d.Aviso != "" {
+		fmt.Fprintln(a.saida, d.Aviso)
+	}
+	fmt.Fprintln(a.saida)
+	tw := tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', tabwriter.AlignRight)
+	fmt.Fprintln(tw, "Ativo\tQtd\tPreço médio\tCotação\tValor\tResultado\t%\tPeso\t")
+	for _, l := range d.Linhas {
+		alerta := ""
+		if l.AcimaTeto {
+			alerta = "  acima do teto de " + d.Teto
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", l.Ticker, l.Qtd, l.PrecoMedio, l.Cotacao, l.Valor,
+			l.Resultado, l.ResultadoPct, l.Peso, alerta)
+	}
+	fmt.Fprintf(tw, "Total\t\t\t\t%s\t%s\t%s\t\t\n", d.Total, d.ResultadoTotal, d.ResultadoTotalPct)
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+
+	if len(d.Classes) > 0 {
+		fmt.Fprintln(a.saida, "\nPor classe:")
+		tw = tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', tabwriter.AlignRight)
+		for _, c := range d.Classes {
+			fmt.Fprintf(tw, "  %s\t%s\t%s\t\n", c.Nome, c.Valor, c.Pct)
+		}
+		if err := tw.Flush(); err != nil {
+			return err
+		}
+	}
+	if len(d.Terceiros) > 0 {
+		fmt.Fprintln(a.saida, "\nDe terceiros (fora do total, dos pesos e da correlação):")
+		tw = tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', tabwriter.AlignRight)
+		for _, l := range d.Terceiros {
+			fmt.Fprintf(tw, "  %s\t%s\t%s\t\n", l.Nome, l.Qtd, l.Valor)
+		}
+		if d.TotalTerceiros != "" {
+			fmt.Fprintf(tw, "  Total\t\t%s\t\n", d.TotalTerceiros)
+		}
+		if err := tw.Flush(); err != nil {
+			return err
+		}
+	}
+
+	fmt.Fprintf(a.saida, "\nResultado das vendas já feitas: R$ %s\n", d.Realizado)
+	fmt.Fprintf(a.saida, "Proventos recebidos: R$ %s (detalhe: carteira proventos · a receber: carteira agenda)\n", d.Proventos)
+	imprimirLista(a.saida, "Cotações:", d.Notas)
+	imprimirLista(a.saida, "Confira:", d.Avisos)
 	return nil
 }
 
@@ -208,26 +313,6 @@ func ehOculto(ocultos map[string]bool, t string) bool {
 }
 
 const todoTesouro = "Tesouro*"
-
-func (a *app) imprimirTerceiros(terceiros map[string]*carteira.Posicao, precos map[string]float64) error {
-	linhas, total := carteira.Pesos(terceiros, precos)
-	if len(linhas) == 0 {
-		return nil
-	}
-	fmt.Fprintln(a.saida, "\nDe terceiros (fora do total, dos pesos e da correlação):")
-	tw := tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', tabwriter.AlignRight)
-	for _, l := range linhas {
-		valor := "sem cotação"
-		if l.Cotacao > 0 {
-			valor = formato.Moeda(l.Valor)
-		}
-		fmt.Fprintf(tw, "  %s\t%s\t%s\t\n", l.Ticker, formato.Quantidade(l.Quantidade), valor)
-	}
-	if len(linhas) > 1 {
-		fmt.Fprintf(tw, "  Total\t\t%s\t\n", formato.Moeda(total))
-	}
-	return tw.Flush()
-}
 
 // ocultar marca ativos como de terceiros; "tesouro" vale para todos os títulos.
 func (a *app) ocultar(args []string) error {
@@ -307,20 +392,45 @@ func (a *app) teto() (float64, error) {
 
 // ---------- importação e lançamentos ----------
 
+// resumoImportacao é o que a importação mostra no fim.
+type resumoImportacao struct {
+	Linhas         int      `json:"linhas"`
+	OpsNovas       int      `json:"opsNovas"`
+	OpsExistentes  int      `json:"opsExistentes"`
+	ProvNovos      int      `json:"provNovos"`
+	ProvExistentes int      `json:"provExistentes"`
+	NaoUsadas      []string `json:"naoUsadas"` // "Empréstimo: 3"
+	Confira        []string `json:"confira"`
+}
+
 func (a *app) importar(args []string) error {
 	if len(args) != 1 {
 		return errors.New("uso: carteira importar <movimentacao.xlsx>")
 	}
-	res, err := importacao.LerMovimentacao(args[0])
+	r, err := a.importarArquivo(args[0])
 	if err != nil {
 		return err
+	}
+	fmt.Fprintf(a.saida, "Linhas lidas: %d\n", r.Linhas)
+	fmt.Fprintf(a.saida, "Operações: %d novas, %d já estavam no banco\n", r.OpsNovas, r.OpsExistentes)
+	fmt.Fprintf(a.saida, "Proventos: %d novos, %d já estavam no banco\n", r.ProvNovos, r.ProvExistentes)
+	imprimirLista(a.saida, "Linhas não usadas, por tipo:", r.NaoUsadas)
+	imprimirLista(a.saida, "Confira:", r.Confira)
+	return nil
+}
+
+// importarArquivo lê o extrato de Movimentação da B3 e grava o que for novo.
+func (a *app) importarArquivo(caminho string) (resumoImportacao, error) {
+	res, err := importacao.LerMovimentacao(caminho)
+	if err != nil {
+		return resumoImportacao{}, err
 	}
 	// Tesouro só entra se estiver ligado ("carteira tesouro sim"): hoje os
 	// títulos do extrato são de terceiros. Ligar depois e importar de novo
 	// traz tudo, porque as linhas puladas nunca foram gravadas.
 	tesouroLigado, err := a.tesouroLigado()
 	if err != nil {
-		return err
+		return resumoImportacao{}, err
 	}
 	if !tesouroLigado {
 		var pulados int
@@ -337,24 +447,18 @@ func (a *app) importar(args []string) error {
 	}
 	novasOps, novosProvs, err := a.banco.Importar(res.Operacoes, res.Proventos)
 	if err != nil {
-		return err
+		return resumoImportacao{}, err
 	}
 	if err := a.banco.SalvarConfigTexto("ultima_importacao", a.agora().Format(time.RFC3339)); err != nil {
-		return err
+		return resumoImportacao{}, err
 	}
 
-	fmt.Fprintf(a.saida, "Linhas lidas: %d\n", res.Linhas)
-	fmt.Fprintf(a.saida, "Operações: %d novas, %d já estavam no banco\n", novasOps, len(res.Operacoes)-novasOps)
-	fmt.Fprintf(a.saida, "Proventos: %d novos, %d já estavam no banco\n", novosProvs, len(res.Proventos)-novosProvs)
-	if len(res.Ignorados) > 0 {
-		var linhas []string
-		for _, tipo := range slices.Sorted(maps.Keys(res.Ignorados)) {
-			linhas = append(linhas, fmt.Sprintf("%s: %d", tipo, res.Ignorados[tipo]))
-		}
-		imprimirLista(a.saida, "Linhas não usadas, por tipo:", linhas)
+	r := resumoImportacao{Linhas: res.Linhas, OpsNovas: novasOps, OpsExistentes: len(res.Operacoes) - novasOps,
+		ProvNovos: novosProvs, ProvExistentes: len(res.Proventos) - novosProvs, Confira: res.Avisos}
+	for _, tipo := range slices.Sorted(maps.Keys(res.Ignorados)) {
+		r.NaoUsadas = append(r.NaoUsadas, fmt.Sprintf("%s: %d", tipo, res.Ignorados[tipo]))
 	}
-	imprimirLista(a.saida, "Confira:", res.Avisos)
-	return nil
+	return r, nil
 }
 
 func (a *app) tesouroLigado() (bool, error) {

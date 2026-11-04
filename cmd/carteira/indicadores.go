@@ -251,22 +251,11 @@ func (a *app) explicar(ctx context.Context, args []string) error {
 		return nil
 	}
 	r := res[0]
-	atualizado, _, _ := a.banco.ConfigTexto("cvm_atualizado_em")
-	if tm, err := time.Parse(time.RFC3339, atualizado); err == nil {
-		atualizado = tm.Local().Format("02/01/2006 15:04")
-	}
 
 	fmt.Fprintf(a.saida, "%s · %s\n\n", r.Ticker, def.Nome)
 	fmt.Fprintf(a.saida, "Fórmula: %s\n", def.Formula)
 	fmt.Fprintf(a.saida, "Como ler: %s\n", def.ComoLer)
-	switch def.Chave {
-	case "beta", "volatilidade", "correlacao":
-		fmt.Fprintf(a.saida, "Fonte: B3, histórico de preços (COTAHIST) até %s, ajustado pelos proventos e eventos do site da B3\n", precosAte(a))
-	case "pl":
-		fmt.Fprintf(a.saida, "Fonte: CVM (DFP e ITR), atualizados em %s · preços: B3 (COTAHIST) nos anos, brapi em 12m\n", atualizado)
-	default:
-		fmt.Fprintf(a.saida, "Fonte: CVM, dados abertos (DFP e ITR), atualizados em %s\n", atualizado)
-	}
+	fmt.Fprintf(a.saida, "Fonte: %s\n", a.fonteIndicador(def.Chave))
 
 	for _, c := range r.Colunas {
 		v := c.Valores[def.Chave]
@@ -281,14 +270,7 @@ func (a *app) explicar(ctx context.Context, args []string) error {
 		}
 		fmt.Fprintln(a.saida, formatarValorLongo(v.Numero, def.Unidade))
 		for _, p := range v.Partes {
-			valor := formato.Quantidade(p.Valor)
-			switch {
-			case p.Unidade != "":
-				valor = formatarValorLongo(p.Valor, p.Unidade)
-			case p.Moeda:
-				valor = "R$ " + formato.Moeda(p.Valor)
-			}
-			fmt.Fprintf(a.saida, "  %s: %s", p.Nome, valor)
+			fmt.Fprintf(a.saida, "  %s: %s", p.Nome, textoParte(p))
 			if p.Origem != "" {
 				fmt.Fprintf(a.saida, "  [%s]", p.Origem)
 			}
@@ -300,6 +282,21 @@ func (a *app) explicar(ctx context.Context, args []string) error {
 	}
 	imprimirLista(a.saida, "Avisos:", r.Avisos)
 	return nil
+}
+
+// fonteIndicador diz de onde vêm os números de um indicador.
+func (a *app) fonteIndicador(chave string) string {
+	atualizado, _, _ := a.banco.ConfigTexto("cvm_atualizado_em")
+	if tm, err := time.Parse(time.RFC3339, atualizado); err == nil {
+		atualizado = tm.Local().Format("02/01/2006 15:04")
+	}
+	switch chave {
+	case "beta", "volatilidade", "correlacao":
+		return "B3, histórico de preços (COTAHIST) até " + precosAte(a) + ", ajustado pelos proventos e eventos do site da B3"
+	case "pl":
+		return "CVM (DFP e ITR), atualizados em " + atualizado + " · preços: B3 (COTAHIST) nos anos, brapi em 12m"
+	}
+	return "CVM, dados abertos (DFP e ITR), atualizados em " + atualizado
 }
 
 func chavesIndicadores() string {
@@ -316,6 +313,17 @@ func precosAte(a *app) string {
 		return formato.Data(t)
 	}
 	return "?"
+}
+
+// textoParte formata um número da memória de cálculo.
+func textoParte(p indicadores.Parte) string {
+	switch {
+	case p.Unidade != "":
+		return formatarValorLongo(p.Valor, p.Unidade)
+	case p.Moeda:
+		return "R$ " + formato.Moeda(p.Valor)
+	}
+	return formato.Quantidade(p.Valor)
 }
 
 func formatarValorLongo(v float64, unidade string) string {

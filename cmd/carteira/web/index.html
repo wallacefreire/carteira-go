@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carteira</title>
+<style>
+:root {
+  --fundo: #f5f6f8; --painel: #ffffff; --texto: #1c2430; --suave: #5f6b7a; --borda: #e3e6eb;
+  --destaque: #1f5fbf; --destaque-texto: #ffffff; --ganho: #13804a; --perda: #c23a2b;
+  --alerta-fundo: #fff4e0; --alerta-texto: #8a5300; --linha-par: #fafbfc; --sombra: 0 1px 3px rgba(20,30,50,.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="claro"]) {
+    --fundo: #12161c; --painel: #1b2129; --texto: #e6e9ee; --suave: #9aa5b3; --borda: #2c3440;
+    --destaque: #5b9bff; --destaque-texto: #0d1117; --ganho: #3fbf7f; --perda: #ff7a6b;
+    --alerta-fundo: #3a2c12; --alerta-texto: #ffc870; --linha-par: #1f262f; --sombra: none;
+  }
+}
+:root[data-tema="escuro"] {
+  --fundo: #12161c; --painel: #1b2129; --texto: #e6e9ee; --suave: #9aa5b3; --borda: #2c3440;
+  --destaque: #5b9bff; --destaque-texto: #0d1117; --ganho: #3fbf7f; --perda: #ff7a6b;
+  --alerta-fundo: #3a2c12; --alerta-texto: #ffc870; --linha-par: #1f262f; --sombra: none;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--fundo); color: var(--texto); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { position: sticky; top: 0; z-index: 5; background: var(--painel); border-bottom: 1px solid var(--borda); }
+.topo { max-width: 1200px; margin: 0 auto; padding: 12px 16px 0; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.topo h1 { font-size: 20px; margin: 0; flex: 1; }
+.topo .data { color: var(--suave); font-size: 13px; }
+button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--borda); background: var(--painel); color: var(--texto); padding: 7px 12px; }
+button.principal { background: var(--destaque); color: var(--destaque-texto); border-color: var(--destaque); font-weight: 600; }
+button:disabled { opacity: .6; cursor: wait; }
+nav { max-width: 1200px; margin: 0 auto; padding: 0 16px; display: flex; gap: 4px; overflow-x: auto; }
+nav button { border: none; border-bottom: 3px solid transparent; border-radius: 0; background: none; padding: 10px 12px; color: var(--suave); white-space: nowrap; }
+nav button.ativa { color: var(--texto); border-bottom-color: var(--destaque); font-weight: 600; }
+main { max-width: 1200px; margin: 0 auto; padding: 16px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr)); gap: 12px; margin-bottom: 16px; }
+section.bloco, .card { min-width: 0; }
+@media (max-width: 600px) {
+  .topo { gap: 8px; }
+  .topo .data { display: none; }
+  .topo h1 { font-size: 18px; }
+  .card .valor { font-size: 18px; }
+  main { padding: 12px; }
+  section.bloco { padding: 12px; }
+}
+.card { background: var(--painel); border: 1px solid var(--borda); border-radius: 12px; padding: 14px 16px; box-shadow: var(--sombra); }
+.card .rotulo { color: var(--suave); font-size: 13px; }
+.card .valor { font-size: 22px; font-weight: 650; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.card .sub { font-size: 13px; color: var(--suave); }
+section.bloco { background: var(--painel); border: 1px solid var(--borda); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; box-shadow: var(--sombra); }
+section.bloco h2 { font-size: 16px; margin: 0 0 10px; }
+section.bloco h2 small { color: var(--suave); font-weight: 400; font-size: 13px; }
+.rolagem { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 7px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--borda); }
+th { color: var(--suave); font-weight: 600; font-size: 13px; }
+th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: var(--painel); }
+tbody tr:nth-child(even) td { background: var(--linha-par); }
+tr.total td { font-weight: 650; border-bottom: none; }
+.ganho { color: var(--ganho); } .perda { color: var(--perda); }
+.etiqueta { display: inline-block; font-size: 12px; padding: 1px 7px; border-radius: 99px; background: var(--alerta-fundo); color: var(--alerta-texto); margin-left: 6px; }
+.barra { display: inline-block; width: 60px; height: 6px; background: var(--borda); border-radius: 3px; vertical-align: middle; margin-left: 6px; overflow: hidden; }
+.barra i { display: block; height: 100%; background: var(--destaque); }
+.barra i.acima { background: var(--alerta-texto); }
+ul.notas { margin: 6px 0 0; padding-left: 18px; color: var(--suave); font-size: 13px; }
+.aviso-topo { background: var(--alerta-fundo); color: var(--alerta-texto); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.aviso-topo span { flex: 1; }
+.carregando { color: var(--suave); padding: 24px 0; }
+.erro { color: var(--perda); padding: 12px 0; white-space: pre-wrap; }
+.linha-form { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+input[type=text], select { font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--borda); background: var(--painel); color: var(--texto); }
+input[type=text] { flex: 1; min-width: 160px; }
+td.clicavel { cursor: pointer; }
+td.clicavel:hover { outline: 1px solid var(--destaque); outline-offset: -1px; }
+td.sem { color: var(--suave); }
+.ok { color: var(--ganho); font-weight: 600; } .nok { color: var(--perda); }
+.nota-radar { font-weight: 650; }
+.legenda { color: var(--suave); font-size: 13px; margin-top: 8px; }
+/* painel lateral da memória de cálculo */
+#painel { position: fixed; top: 0; right: 0; height: 100%; width: min(460px, 100%); background: var(--painel); border-left: 1px solid var(--borda); box-shadow: -4px 0 20px rgba(0,0,0,.15); transform: translateX(100%); transition: transform .2s; z-index: 20; overflow-y: auto; padding: 18px; }
+#painel.aberto { transform: none; }
+#painel h3 { margin: 0 30px 4px 0; font-size: 17px; }
+#painel .fechar, .modal .fechar { position: absolute; top: 12px; right: 12px; border: none; background: none; font-size: 22px; line-height: 1; padding: 4px 8px; color: var(--suave); }
+#painel dl { margin: 12px 0 0; }
+#painel dt { color: var(--suave); font-size: 13px; margin-top: 10px; }
+#painel dd { margin: 2px 0 0; }
+#painel table td { white-space: normal; text-align: left; }
+#painel table td.num { text-align: right; white-space: nowrap; }
+#painel .origem { color: var(--suave); font-size: 12px; }
+/* modal (aviso de mês novo e resultado da importação) */
+#fundo-modal { position: fixed; inset: 0; z-index: 30; background: rgba(10,15,25,.35); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: none; align-items: center; justify-content: center; padding: 16px; }
+#fundo-modal.aberto { display: flex; }
+.modal { position: relative; background: var(--painel); border-radius: 14px; max-width: 480px; width: 100%; padding: 22px; box-shadow: 0 10px 40px rgba(0,0,0,.3); max-height: 90vh; overflow-y: auto; }
+.modal h3 { margin: 0 30px 8px 0; }
+.modal ol { padding-left: 20px; } .modal li { margin: 6px 0; }
+.modal .acoes { margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end; }
+</style>
+</head>
+<body>
+<header>
+  <div class="topo">
+    <h1>Carteira</h1>
+    <span class="data" id="data"></span>
+    <button id="tema" title="Tema claro ou escuro">◐</button>
+    <button class="principal" id="botao-importar">Importar</button>
+    <input type="file" id="arquivo" accept=".xlsx" hidden>
+  </div>
+  <nav id="abas">
+    <button data-aba="carteira" class="ativa">Carteira</button>
+    <button data-aba="proventos">Proventos</button>
+    <button data-aba="agenda">Agenda</button>
+    <button data-aba="indicadores">Indicadores</button>
+    <button data-aba="radar">Radar</button>
+  </nav>
+</header>
+<main id="conteudo"></main>
+
+<aside id="painel" aria-hidden="true"><button class="fechar" aria-label="Fechar">×</button><div id="painel-corpo"></div></aside>
+<div id="fundo-modal"><div class="modal" role="dialog" aria-modal="true"><button class="fechar" aria-label="Fechar">×</button><div id="modal-corpo"></div></div></div>
+
+<script>
+"use strict";
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const cor = (n) => (n > 0 ? "ganho" : n < 0 ? "perda" : "");
+const sinal = (txt) => (txt.startsWith("-") ? "perda" : txt === "-" || /^0,0/.test(txt) ? "" : "ganho");
+const lista = (titulo, itens) => (itens && itens.length ? `<p class="legenda"><b>${esc(titulo)}</b></p><ul class="notas">${itens.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>` : "");
+
+// Cada aba guarda o que já carregou; "Importar" limpa tudo.
+const cache = {};
+let abaAtual = "carteira";
+
+async function api(caminho, opcoes) {
+  const r = await fetch(caminho, opcoes);
+  let dados;
+  try { dados = await r.json(); } catch { throw new Error(`resposta inesperada do servidor (HTTP ${r.status})`); }
+  if (!r.ok) throw new Error(dados.erro || `HTTP ${r.status}`);
+  return dados;
+}
+
+function carregando(msg) { $("#conteudo").innerHTML = `<p class="carregando">${esc(msg)}</p>`; }
+function erro(e) { $("#conteudo").innerHTML = `<p class="erro">Erro: ${esc(e.message)}</p>`; }
+
+// ---------- abas ----------
+$("#abas").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button[data-aba]");
+  if (b) abrirAba(b.dataset.aba);
+});
+
+const ABAS = ["carteira", "proventos", "agenda", "indicadores", "radar"];
+function abrirAba(nome) {
+  abaAtual = nome;
+  history.replaceState(null, "", nome === "carteira" ? location.pathname : "#" + nome);
+  for (const b of document.querySelectorAll("#abas button")) b.classList.toggle("ativa", b.dataset.aba === nome);
+  fecharPainel();
+  ({ carteira: abaCarteira, proventos: abaProventos, agenda: abaAgenda, indicadores: abaIndicadores, radar: abaRadar })[nome]();
+}
+
+// ---------- Carteira ----------
+async function abaCarteira() {
+  if (!cache.posicao) {
+    carregando("Buscando cotações…");
+    try { cache.posicao = await api("/api/posicao"); } catch (e) { return erro(e); }
+  }
+  if (abaAtual !== "carteira") return;
+  const d = cache.posicao;
+  $("#data").textContent = d.data;
+  if (d.vazia) {
+    $("#conteudo").innerHTML = `<section class="bloco"><h2>Carteira vazia</h2><p>Importe o extrato de Movimentação da B3 (.xlsx) no botão <b>Importar extrato</b>.</p></section>`;
+    return;
+  }
+  let h = "";
+  if (d.mesNovo) h += `<div class="aviso-topo"><span>Mês novo: falta importar o extrato da B3.</span><button onclick="mostrarAvisoMes()">Como fazer</button></div>`;
+  h += `<div class="cards">
+    <div class="card"><div class="rotulo">Valor da carteira</div><div class="valor">R$ ${esc(d.total)}</div></div>
+    <div class="card"><div class="rotulo">Resultado (cotação − custo)</div><div class="valor ${cor(d.resultadoTotalNum)}">R$ ${esc(d.resultadoTotal)}</div><div class="sub ${cor(d.resultadoTotalNum)}">${esc(d.resultadoTotalPct)}</div></div>
+    <div class="card"><div class="rotulo">Proventos recebidos</div><div class="valor">R$ ${esc(d.proventos)}</div></div>
+    <div class="card"><div class="rotulo">Resultado das vendas já feitas</div><div class="valor">R$ ${esc(d.realizado)}</div></div>
+  </div>`;
+  h += `<section class="bloco"><h2>Posição <small>valores em R$ · teto por ativo ${esc(d.teto)}</small></h2><div class="rolagem"><table>
+    <thead><tr><th>Ativo</th><th>Qtd</th><th>Preço médio</th><th>Cotação</th><th>Valor</th><th>Resultado</th><th>%</th><th>Peso</th></tr></thead><tbody>`;
+  for (const l of d.linhas) {
+    const c = cor(l.resultadoNum);
+    const barra = l.peso === "-" ? "" : `<span class="barra"><i class="${l.acimaTeto ? "acima" : ""}" style="width:${Math.min(100, l.pesoNum * 100)}%"></i></span>`;
+    h += `<tr><td>${esc(l.ticker)}${l.acimaTeto ? `<span class="etiqueta">acima do teto</span>` : ""}</td><td>${esc(l.qtd)}</td><td>${esc(l.precoMedio)}</td><td>${esc(l.cotacao)}</td>
+      <td>${esc(l.valor)}</td><td class="${c}">${esc(l.resultado)}</td><td class="${c}">${esc(l.resultadoPct)}</td><td>${esc(l.peso)}${barra}</td></tr>`;
+  }
+  h += `<tr class="total"><td>Total</td><td></td><td></td><td></td><td>${esc(d.total)}</td><td class="${cor(d.resultadoTotalNum)}">${esc(d.resultadoTotal)}</td><td class="${cor(d.resultadoTotalNum)}">${esc(d.resultadoTotalPct)}</td><td></td></tr></tbody></table></div>`;
+  h += lista("Cotações", d.notas) + lista("Confira", d.avisos) + `</section>`;
+  if (d.classes && d.classes.length) {
+    h += `<section class="bloco"><h2>Por classe</h2><table><tbody>${d.classes.map((c) => `<tr><td>${esc(c.nome)}</td><td>${esc(c.valor)}</td><td>${esc(c.pct)}</td></tr>`).join("")}</tbody></table></section>`;
+  }
+  if (d.terceiros && d.terceiros.length) {
+    h += `<section class="bloco"><h2>De terceiros <small>fora do total, dos pesos e da correlação</small></h2><table><tbody>
+      ${d.terceiros.map((t) => `<tr><td>${esc(t.nome)}</td><td>${esc(t.qtd)}</td><td>${esc(t.valor)}</td></tr>`).join("")}
+      ${d.totalTerceiros ? `<tr class="total"><td>Total</td><td></td><td>${esc(d.totalTerceiros)}</td></tr>` : ""}</tbody></table></section>`;
+  }
+  $("#conteudo").innerHTML = h;
+}
+
+// ---------- Proventos ----------
+const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+async function abaProventos() {
+  if (!cache.proventos) {
+    carregando("Somando os proventos…");
+    try { cache.proventos = await api("/api/proventos"); } catch (e) { return erro(e); }
+  }
+  if (abaAtual !== "proventos") return;
+  const d = cache.proventos;
+  if (!d.pagamentos) {
+    $("#conteudo").innerHTML = `<section class="bloco"><p>Nenhum provento recebido. Eles vêm do extrato da B3.</p></section>`;
+    return;
+  }
+  let h = `<div class="cards"><div class="card"><div class="rotulo">Total recebido</div><div class="valor">R$ ${esc(d.total)}</div><div class="sub">${d.pagamentos} pagamentos</div></div>
+    ${d.tipos.map((t) => `<div class="card"><div class="rotulo">${esc(t.nome)}</div><div class="valor">R$ ${esc(t.valor)}</div></div>`).join("")}</div>`;
+  h += `<section class="bloco"><h2>Por mês <small>R$, líquido</small></h2><div class="rolagem"><table><thead><tr><th>Ano</th>${MESES.map((m) => `<th>${m}</th>`).join("")}<th>Total</th></tr></thead><tbody>
+    ${d.anos.map((a) => `<tr><td>${a.ano}</td>${a.meses.map((m) => `<td class="${m === "-" ? "sem" : ""}">${esc(m)}</td>`).join("")}<td><b>${esc(a.total)}</b></td></tr>`).join("")}
+    </tbody></table></div></section>`;
+  h += `<section class="bloco"><h2>Por ativo</h2><div class="rolagem"><table><thead><tr><th>Ativo</th><th>Total</th><th>%</th><th>Pagamentos</th><th>Último</th></tr></thead><tbody>
+    ${d.ativos.map((a) => `<tr><td>${esc(a.ticker)}${a.naCarteira ? "" : ` <span class="legenda">(vendido)</span>`}</td><td>${esc(a.total)}</td><td>${esc(a.pct)}</td><td>${a.pagamentos}</td><td>${esc(a.ultimo)}</td></tr>`).join("")}
+    <tr class="total"><td>Total</td><td>${esc(d.total)}</td><td></td><td>${d.pagamentos}</td><td></td></tr></tbody></table></div>
+    <p class="legenda">Valores líquidos, como creditados (o JCP já vem com 15% de IR descontado). Fonte: extrato de Movimentação da B3.</p></section>`;
+  $("#conteudo").innerHTML = h;
+}
+
+// ---------- Agenda ----------
+async function abaAgenda() {
+  if (!cache.agenda) {
+    carregando("Consultando os proventos anunciados no site da B3…");
+    try { cache.agenda = await api("/api/agenda"); } catch (e) { return erro(e); }
+  }
+  if (abaAtual !== "agenda") return;
+  const d = cache.agenda;
+  if (!d.itens || !d.itens.length) {
+    $("#conteudo").innerHTML = `<section class="bloco"><p>Nenhum provento anunciado a receber.</p>${lista("Observações", d.notas)}</section>`;
+    return;
+  }
+  const futura = d.itens.some((i) => i.comFutura);
+  let h = `<div class="cards"><div class="card"><div class="rotulo">A receber (líquido)</div><div class="valor">R$ ${esc(d.totalLiquido)}</div><div class="sub">bruto R$ ${esc(d.totalBruto)}</div></div></div>`;
+  h += `<section class="bloco"><h2>Proventos a receber <small>em ${esc(d.data)}</small></h2><div class="rolagem"><table><thead><tr><th>Pagamento</th><th>Ativo</th><th>Tipo</th><th>Data-com</th><th>Qtd</th><th>R$/ação</th><th>Bruto</th><th>Líquido</th></tr></thead><tbody>
+    ${d.itens.map((i) => `<tr><td>${esc(i.pagamento)}</td><td>${esc(i.ticker)}</td><td>${esc(i.tipo)}</td><td>${esc(i.dataCom)}${i.comFutura ? " *" : ""}</td><td>${esc(i.qtd)}</td><td>${esc(i.valorAcao)}</td><td>${esc(i.bruto)}</td><td>${esc(i.liquido)}</td></tr>`).join("")}
+    <tr class="total"><td>Total</td><td></td><td></td><td></td><td></td><td></td><td>${esc(d.totalBruto)}</td><td>${esc(d.totalLiquido)}</td></tr></tbody></table></div>
+    <p class="legenda">Quantidade = ações que você tinha na data-com (pelas operações gravadas). JCP tem 15% de IR retido.${futura ? "<br>* data-com ainda não passou: vale a quantidade que você tiver nesse dia (usada a de hoje)." : ""}<br>Fonte: site da B3 (empresas listadas).</p>
+    ${lista("Observações", d.notas)}</section>`;
+  $("#conteudo").innerHTML = h;
+}
+
+// ---------- Indicadores ----------
+let ativosIndicadores = "";
+async function abaIndicadores() {
+  const chave = "indicadores:" + ativosIndicadores;
+  const form = `<form class="linha-form" id="form-ind"><input type="text" id="ativos" placeholder="Outros ativos, ex.: GRND3 PETR4 (vazio = carteira e observação)" value="${esc(ativosIndicadores)}"><button class="principal">Ver</button></form>`;
+  if (!cache[chave]) {
+    $("#conteudo").innerHTML = form + `<p class="carregando">Calculando os indicadores (na primeira vez baixa os balanços da CVM e os preços da B3: pode levar alguns minutos)…</p>`;
+    ligarFormIndicadores();
+    try {
+      cache[chave] = await api("/api/indicadores?ativos=" + encodeURIComponent(ativosIndicadores));
+    } catch (e) {
+      if (abaAtual === "indicadores") {
+        $("#conteudo").innerHTML = form + `<p class="erro">Erro: ${esc(e.message)}</p>`;
+        ligarFormIndicadores();
+      }
+      return;
+    }
+  }
+  if (abaAtual !== "indicadores") return;
+  const d = cache[chave];
+  let h = form;
+  d.ativos.forEach((at, ia) => {
+    h += `<section class="bloco"><h2>${esc(at.ticker)} <small>${esc(at.nome)}${at.ultimoBalanco ? " · último balanço " + esc(at.ultimoBalanco) : ""}${at.financeira ? " · banco/seguradora" : ""}</small></h2>`;
+    if (!at.colunas || !at.colunas.length) { h += lista("Avisos", at.avisos) + `</section>`; return; }
+    h += `<div class="rolagem"><table><thead><tr><th></th>${at.colunas.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>`;
+    at.linhas.forEach((l, il) => {
+      h += `<tr><td>${esc(l.nome)}${l.unidade === "R$" ? " (R$ mi)" : ""}</td>${l.celulas.map((c, ic) => `<td class="clicavel ${c.ok ? "" : "sem"}" data-i="${ia},${il},${ic}" title="Ver a conta">${esc(c.texto)}</td>`).join("")}</tr>`;
+    });
+    h += `</tbody></table></div><p class="legenda">Clique num número para ver a conta · n/a = não se aplica a bancos e seguradoras · "-" = sem dado</p>${lista("Avisos", at.avisos)}</section>`;
+  });
+  h += lista("Observações", d.notas);
+  $("#conteudo").innerHTML = h;
+  ligarFormIndicadores();
+  $("#conteudo").onclick = (ev) => {
+    const td = ev.target.closest("td[data-i]");
+    if (!td) return;
+    const [ia, il, ic] = td.dataset.i.split(",").map(Number);
+    const at = d.ativos[ia], l = at.linhas[il], c = l.celulas[ic];
+    abrirPainel(at, l, at.colunas[ic], c);
+  };
+}
+function ligarFormIndicadores() {
+  const f = $("#form-ind");
+  if (f) f.onsubmit = (ev) => { ev.preventDefault(); ativosIndicadores = $("#ativos").value.trim().toUpperCase(); abaIndicadores(); };
+}
+
+function abrirPainel(at, l, coluna, c) {
+  let h = `<h3>${esc(at.ticker)} · ${esc(l.nome)}</h3><div class="legenda">${esc(coluna)} (${esc(c.periodo)})</div>`;
+  h += c.ok ? `<p style="font-size:24px;font-weight:650;margin:10px 0">${esc(c.longo || c.texto)}</p>` : `<p class="nok">Sem valor: ${esc(c.motivo)}</p>`;
+  if (c.partes && c.partes.length) {
+    h += `<table><tbody>${c.partes.map((p) => `<tr><td>${esc(p.nome)}${p.origem ? `<div class="origem">${esc(p.origem)}</div>` : ""}</td><td class="num">${esc(p.valor)}</td></tr>`).join("")}</tbody></table>`;
+  }
+  h += `<dl>${c.nota ? `<dt>Observação</dt><dd>${esc(c.nota)}</dd>` : ""}<dt>Fórmula</dt><dd>${esc(l.formula)}</dd><dt>Como ler</dt><dd>${esc(l.comoLer)}</dd><dt>Fonte</dt><dd>${esc(l.fonte)}</dd></dl>`;
+  $("#painel-corpo").innerHTML = h;
+  $("#painel").classList.add("aberto");
+  $("#painel").setAttribute("aria-hidden", "false");
+}
+function fecharPainel() { $("#painel").classList.remove("aberto"); $("#painel").setAttribute("aria-hidden", "true"); }
+$("#painel .fechar").onclick = fecharPainel;
+
+// ---------- Radar ----------
+let radarTodas = false, radarBusca = "";
+async function abaRadar() {
+  if (!cache.radar) {
+    $("#conteudo").innerHTML = `<section class="bloco"><h2>Radar</h2><p>Avalia todas as ações da B3 com liquidez pelo seu filtro. Na primeira vez baixa os eventos de cada empresa no site da B3 e pode levar vários minutos.</p><button class="principal" id="rodar-radar">Calcular o radar</button></section>`;
+    $("#rodar-radar").onclick = async () => {
+      carregando("Calculando o radar… (pode levar alguns minutos)");
+      try { cache.radar = await api("/api/radar"); } catch (e) { if (abaAtual === "radar") erro(e); return; }
+      if (abaAtual === "radar") abaRadar();
+    };
+    return;
+  }
+  const d = cache.radar;
+  const busca = radarBusca.toUpperCase();
+  let itens = d.itens.filter((i) => !busca || i.ticker.includes(busca) || (i.nome || "").toUpperCase().includes(busca));
+  const total = itens.length;
+  if (!radarTodas && !busca) itens = itens.slice(0, 30);
+  let h = `<div class="linha-form"><input type="text" id="busca-radar" placeholder="Procurar ativo ou empresa" value="${esc(radarBusca)}">
+    <button id="radar-todas">${radarTodas ? "Só as 30 melhores" : "Ver todas (" + d.itens.length + ")"}</button><button id="radar-atualizar">Calcular de novo</button></div>`;
+  h += `<section class="bloco"><h2>Radar <small>${esc(d.data)} · ${d.analisadas} empresas · ${d.semLiquidez} códigos sem liquidez ficaram fora · preços até ${esc(d.precosAte)}</small></h2>
+    <div class="rolagem"><table><thead><tr><th>Ativo</th><th>Nota</th>${d.criterios.map((c) => `<th>${esc(c)}</th>`).join("")}<th style="text-align:left">Obs.</th></tr></thead><tbody>`;
+  for (const i of itens) {
+    h += `<tr><td title="${esc(i.nome)}">${esc(i.ticker)}${i.naCarteira ? ` <span class="etiqueta">na carteira</span>` : ""}</td><td class="nota-radar">${i.cumpridos}/${i.total}</td>
+      ${i.criterios.map((c) => `<td class="${c.naoAplica ? "sem" : c.ok ? "ok" : "nok"}">${esc(c.valor)} ${c.naoAplica ? "" : c.ok ? "✓" : "✗"}</td>`).join("")}<td style="text-align:left">${esc(i.obs)}</td></tr>`;
+  }
+  h += `</tbody></table></div><p class="legenda">${!radarTodas && !busca && total > 30 ? `Mostrando as 30 melhores de ${total}. ` : ""}Nenhum critério elimina sozinho: a nota é quantos o ativo cumpre · n/a = não se aplica (ROIC de banco) · P/L com o último fechamento do COTAHIST · limites: <code>carteira filtro</code></p>${lista("Observações", d.notas)}</section>`;
+  $("#conteudo").innerHTML = h;
+  const b = $("#busca-radar");
+  b.oninput = () => { radarBusca = b.value; abaRadar(); const nb = $("#busca-radar"); nb.focus(); nb.setSelectionRange(nb.value.length, nb.value.length); };
+  $("#radar-todas").onclick = () => { radarTodas = !radarTodas; abaRadar(); };
+  $("#radar-atualizar").onclick = () => { delete cache.radar; abaRadar(); $("#rodar-radar").click(); };
+}
+
+// ---------- modal e importação ----------
+function abrirModal(html) { $("#modal-corpo").innerHTML = html; $("#fundo-modal").classList.add("aberto"); }
+function fecharModal() { $("#fundo-modal").classList.remove("aberto"); }
+$("#fundo-modal").addEventListener("click", (ev) => { if (ev.target.id === "fundo-modal") fecharModal(); });
+$(".modal .fechar").onclick = fecharModal;
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { fecharModal(); fecharPainel(); } });
+
+function mostrarAvisoMes() {
+  abrirModal(`<h3>Mês novo: importe o extrato</h3>
+    <ol><li>Entre em <b>investidor.b3.com.br</b>.</li><li>Vá em <b>Extratos › Movimentação</b> e escolha o período desde a última importação.</li>
+    <li>Baixe em <b>Excel (.xlsx)</b>. O PDF não serve: ele não traz a coluna Entrada/Saída.</li><li>Clique em <b>Escolher o arquivo</b> aqui embaixo.</li></ol>
+    <p class="legenda">Pode importar o mesmo período de novo: o que já está no banco não é duplicado.</p>
+    <div class="acoes"><button onclick="fecharModal()">Depois</button><button class="principal" onclick="escolherArquivo()">Escolher o arquivo</button></div>`);
+}
+function escolherArquivo() { $("#arquivo").value = ""; $("#arquivo").click(); }
+$("#botao-importar").onclick = escolherArquivo;
+$("#arquivo").onchange = async () => {
+  const arq = $("#arquivo").files[0];
+  if (!arq) return;
+  const fd = new FormData();
+  fd.append("extrato", arq);
+  abrirModal(`<h3>Importando…</h3><p class="carregando">${esc(arq.name)}</p>`);
+  $("#botao-importar").disabled = true;
+  try {
+    const r = await api("/api/importar", { method: "POST", body: fd });
+    abrirModal(`<h3>Extrato importado</h3>
+      <table><tbody><tr><td>Linhas lidas</td><td>${r.linhas}</td></tr>
+      <tr><td>Operações novas</td><td><b>${r.opsNovas}</b> <span class="legenda">(${r.opsExistentes} já estavam)</span></td></tr>
+      <tr><td>Proventos novos</td><td><b>${r.provNovos}</b> <span class="legenda">(${r.provExistentes} já estavam)</span></td></tr></tbody></table>
+      ${lista("Linhas não usadas, por tipo", r.naoUsadas)}${lista("Confira", r.confira)}
+      <div class="acoes"><button class="principal" onclick="fecharModal()">Ok</button></div>`);
+    for (const k of Object.keys(cache)) delete cache[k];
+    abrirAba(abaAtual);
+  } catch (e) {
+    abrirModal(`<h3>Não deu para importar</h3><p class="erro">${esc(e.message)}</p><div class="acoes"><button onclick="fecharModal()">Fechar</button><button class="principal" onclick="escolherArquivo()">Escolher outro arquivo</button></div>`);
+  } finally {
+    $("#botao-importar").disabled = false;
+  }
+};
+
+// ---------- tema ----------
+function aplicarTema(t) { if (t) document.documentElement.dataset.tema = t; else delete document.documentElement.dataset.tema; }
+try { aplicarTema(localStorage.getItem("tema")); } catch {}
+$("#tema").onclick = () => {
+  const escuroAgora = getComputedStyle(document.documentElement).getPropertyValue("--fundo").trim() === "#12161c";
+  const novo = escuroAgora ? "claro" : "escuro";
+  aplicarTema(novo);
+  try { localStorage.setItem("tema", novo); } catch {}
+};
+
+// ---------- início ----------
+(async () => {
+  // A posição sempre carrega: é dela que vem o aviso de mês novo.
+  try { cache.posicao = await api("/api/posicao"); $("#data").textContent = cache.posicao.data; } catch {}
+  const pedida = location.hash.slice(1);
+  abrirAba(ABAS.includes(pedida) ? pedida : "carteira");
+  if (cache.posicao && cache.posicao.mesNovo) mostrarAvisoMes();
+})();
+</script>
+</body>
+</html>

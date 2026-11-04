@@ -44,6 +44,7 @@ Uso:
                                             liquidez, beta, volatilidade, correlacao)
   carteira cvm                              baixa de novo os balanços da CVM (é automático 1x por semana)
   carteira precos                           baixa de novo o histórico de preços da B3 (automático 1x por semana)
+  carteira web [PORTA]                      abre a tela no navegador: http://localhost:8080 (só neste PC)
 
 Exemplos:
   carteira importar movimentacao.xlsx
@@ -156,6 +157,8 @@ func executar(args []string, saida io.Writer) error {
 		return a.mostrar(args)
 	case "teto":
 		return a.mudarTeto(args)
+	case "web":
+		return a.web(args)
 	default:
 		return fmt.Errorf("comando desconhecido %q (veja: carteira ajuda)", cmd)
 	}

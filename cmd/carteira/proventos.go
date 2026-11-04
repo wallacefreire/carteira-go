@@ -108,7 +108,8 @@ func (a *app) classe(t string) string {
 	return "FIIs e ETFs"
 }
 
-func (a *app) imprimirClasses(linhas []carteira.Linha, total float64) error {
+// classes soma o valor por classe, da maior para a menor.
+func (a *app) classes(linhas []carteira.Linha, total float64) []itemValor {
 	if total <= 0 {
 		return nil
 	}
@@ -118,17 +119,43 @@ func (a *app) imprimirClasses(linhas []carteira.Linha, total float64) error {
 			soma[a.classe(l.Ticker)] += l.Valor
 		}
 	}
-	classes := slices.Collect(maps.Keys(soma))
-	slices.SortFunc(classes, func(x, y string) int { return cmp.Compare(soma[y], soma[x]) })
-	fmt.Fprintln(a.saida, "\nPor classe:")
-	tw := tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', tabwriter.AlignRight)
-	for _, c := range classes {
-		fmt.Fprintf(tw, "  %s\t%s\t%s\t\n", c, formato.Moeda(soma[c]), formato.Pct(soma[c]/total))
+	nomes := slices.Collect(maps.Keys(soma))
+	slices.SortFunc(nomes, func(x, y string) int { return cmp.Compare(soma[y], soma[x]) })
+	var l []itemValor
+	for _, c := range nomes {
+		l = append(l, itemValor{Nome: c, Valor: formato.Moeda(soma[c]), Pct: formato.Pct(soma[c] / total)})
 	}
-	return tw.Flush()
+	return l
 }
 
 // ---------- carteira proventos ----------
+
+// anoProventos é uma linha da tabela ano × mês.
+type anoProventos struct {
+	Ano      int         `json:"ano"`
+	Meses    [12]string  `json:"meses"` // "-" quando não houve
+	MesesNum [12]float64 `json:"mesesNum"`
+	Total    string      `json:"total"`
+}
+
+// ativoProventos é o total recebido de um ativo.
+type ativoProventos struct {
+	Ticker     string `json:"ticker"`
+	NaCarteira bool   `json:"naCarteira"`
+	Total      string `json:"total"`
+	Pct        string `json:"pct"`
+	Pagamentos int    `json:"pagamentos"`
+	Ultimo     string `json:"ultimo"`
+}
+
+type dadosProventos struct {
+	Ano        int              `json:"ano"` // 0 = todos
+	Anos       []anoProventos   `json:"anos"`
+	Ativos     []ativoProventos `json:"ativos"`
+	Tipos      []itemValor      `json:"tipos"`
+	Total      string           `json:"total"`
+	Pagamentos int              `json:"pagamentos"`
+}
 
 func (a *app) proventos(args []string) error {
 	ano := 0
@@ -142,9 +169,59 @@ func (a *app) proventos(args []string) error {
 		}
 		ano = v
 	}
-	todos, err := a.banco.Proventos()
+	d, err := a.dadosProventos(ano)
 	if err != nil {
 		return err
+	}
+	if d.Pagamentos == 0 {
+		fmt.Fprintln(a.saida, "Nenhum provento recebido no período. Os proventos vêm do extrato da B3: carteira importar <movimentacao.xlsx>")
+		return nil
+	}
+
+	titulo := "Proventos recebidos (R$)"
+	if ano != 0 {
+		titulo += fmt.Sprintf(" em %d", ano)
+	}
+	fmt.Fprintln(a.saida, titulo+"\n")
+	tw := tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', tabwriter.AlignRight)
+	fmt.Fprintln(tw, "Ano\tJan\tFev\tMar\tAbr\tMai\tJun\tJul\tAgo\tSet\tOut\tNov\tDez\tTotal\t")
+	for _, y := range d.Anos {
+		linha := append([]string{strconv.Itoa(y.Ano)}, y.Meses[:]...)
+		fmt.Fprintln(tw, strings.Join(append(linha, y.Total), "\t")+"\t")
+	}
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+
+	fmt.Fprintln(a.saida, "\nPor ativo (* = ainda na carteira):")
+	tw = tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', tabwriter.AlignRight)
+	fmt.Fprintln(tw, "Ativo\tTotal\t%\tPagamentos\tÚltimo\t")
+	for _, t := range d.Ativos {
+		nome := t.Ticker
+		if t.NaCarteira {
+			nome = "* " + nome
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t\n", nome, t.Total, t.Pct, t.Pagamentos, t.Ultimo)
+	}
+	fmt.Fprintf(tw, "Total\t%s\t\t%d\t\t\n", d.Total, d.Pagamentos)
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+
+	fmt.Fprintln(a.saida, "\nPor tipo:")
+	for _, t := range d.Tipos {
+		fmt.Fprintf(a.saida, "  %s: R$ %s\n", t.Nome, t.Valor)
+	}
+	fmt.Fprintln(a.saida, "\nValores líquidos, como creditados (o JCP já vem com 15% de IR descontado). Fonte: extrato de Movimentação da B3.")
+	return nil
+}
+
+// dadosProventos monta as tabelas de proventos recebidos (ano 0 = todos).
+func (a *app) dadosProventos(ano int) (dadosProventos, error) {
+	d := dadosProventos{Ano: ano}
+	todos, err := a.banco.Proventos()
+	if err != nil {
+		return d, err
 	}
 	var ps []carteira.Provento
 	for _, p := range todos {
@@ -153,8 +230,7 @@ func (a *app) proventos(args []string) error {
 		}
 	}
 	if len(ps) == 0 {
-		fmt.Fprintln(a.saida, "Nenhum provento recebido no período. Os proventos vêm do extrato da B3: carteira importar <movimentacao.xlsx>")
-		return nil
+		return d, nil
 	}
 
 	// Ano × mês, e totais por ativo.
@@ -178,54 +254,33 @@ func (a *app) proventos(args []string) error {
 		total += p.Valor
 	}
 
-	titulo := "Proventos recebidos (R$)"
-	if ano != 0 {
-		titulo += fmt.Sprintf(" em %d", ano)
-	}
-	fmt.Fprintln(a.saida, titulo+"\n")
-	tw := tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', tabwriter.AlignRight)
-	fmt.Fprintln(tw, "Ano\tJan\tFev\tMar\tAbr\tMai\tJun\tJul\tAgo\tSet\tOut\tNov\tDez\tTotal\t")
 	for _, y := range slices.Sorted(maps.Keys(porMes)) {
-		linha := []string{strconv.Itoa(y)}
+		linha := anoProventos{Ano: y, MesesNum: *porMes[y]}
 		var soma float64
-		for _, v := range porMes[y] {
+		for i, v := range porMes[y] {
 			soma += v
-			linha = append(linha, valorOuTraco(v))
+			linha.Meses[i] = valorOuTraco(v)
 		}
-		fmt.Fprintln(tw, strings.Join(append(linha, formato.Moeda(soma)), "\t")+"\t")
-	}
-	if err := tw.Flush(); err != nil {
-		return err
+		linha.Total = formato.Moeda(soma)
+		d.Anos = append(d.Anos, linha)
 	}
 
 	pos, err := a.posicoesAbertas()
 	if err != nil {
-		return err
+		return d, err
 	}
 	ativos := slices.Collect(maps.Keys(porAtivo))
 	slices.SortFunc(ativos, func(x, y string) int { return cmp.Compare(porAtivo[y], porAtivo[x]) })
-	fmt.Fprintln(a.saida, "\nPor ativo (* = ainda na carteira):")
-	tw = tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', tabwriter.AlignRight)
-	fmt.Fprintln(tw, "Ativo\tTotal\t%\tPagamentos\tÚltimo\t")
 	for _, t := range ativos {
-		nome := t
-		if pos[t] {
-			nome = "* " + t
-		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t\n", nome, formato.Moeda(porAtivo[t]), formato.Pct(porAtivo[t]/total),
-			pagamentos[t], formato.Data(ultimo[t]))
+		d.Ativos = append(d.Ativos, ativoProventos{Ticker: t, NaCarteira: pos[t], Total: formato.Moeda(porAtivo[t]),
+			Pct: formato.Pct(porAtivo[t] / total), Pagamentos: pagamentos[t], Ultimo: formato.Data(ultimo[t])})
 	}
-	fmt.Fprintf(tw, "Total\t%s\t\t%d\t\t\n", formato.Moeda(total), len(ps))
-	if err := tw.Flush(); err != nil {
-		return err
-	}
-
-	fmt.Fprintln(a.saida, "\nPor tipo:")
 	for _, t := range slices.Sorted(maps.Keys(porTipo)) {
-		fmt.Fprintf(a.saida, "  %s: R$ %s\n", t, formato.Moeda(porTipo[t]))
+		d.Tipos = append(d.Tipos, itemValor{Nome: t, Valor: formato.Moeda(porTipo[t])})
 	}
-	fmt.Fprintln(a.saida, "\nValores líquidos, como creditados (o JCP já vem com 15% de IR descontado). Fonte: extrato de Movimentação da B3.")
-	return nil
+	d.Total = formato.Moeda(total)
+	d.Pagamentos = len(ps)
+	return d, nil
 }
 
 // posicoesAbertas diz quais ativos têm quantidade hoje.
@@ -261,11 +316,70 @@ type itemAgenda struct {
 	comFutura  bool
 }
 
+// linhaAgenda é um provento a receber, já formatado.
+type linhaAgenda struct {
+	Pagamento string `json:"pagamento"` // "a definir" sem data
+	Ticker    string `json:"ticker"`
+	Tipo      string `json:"tipo"`
+	DataCom   string `json:"dataCom"`
+	ComFutura bool   `json:"comFutura"` // data-com ainda não passou
+	Qtd       string `json:"qtd"`
+	ValorAcao string `json:"valorAcao"`
+	Bruto     string `json:"bruto"`
+	Liquido   string `json:"liquido"`
+	Referente string `json:"referente"`
+}
+
+type dadosAgenda struct {
+	Data         string        `json:"data"`
+	Itens        []linhaAgenda `json:"itens"`
+	TotalBruto   string        `json:"totalBruto"`
+	TotalLiquido string        `json:"totalLiquido"`
+	Notas        []string      `json:"notas"`
+}
+
 // agenda: proventos anunciados pelas empresas da carteira que ainda não foram pagos.
 func (a *app) agenda(ctx context.Context) error {
-	ops, err := a.banco.Operacoes("")
+	d, err := a.dadosAgenda(ctx)
 	if err != nil {
 		return err
+	}
+	if len(d.Itens) == 0 {
+		fmt.Fprintln(a.saida, "Nenhum provento anunciado a receber.")
+		imprimirLista(a.saida, "Observações:", d.Notas)
+		return nil
+	}
+	fmt.Fprintf(a.saida, "Proventos a receber em %s (R$)\n\n", d.Data)
+	tw := tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', tabwriter.AlignRight)
+	fmt.Fprintln(tw, "Pagamento\tAtivo\tTipo\tData-com\tQtd\tR$/ação\tBruto\tLíquido\t")
+	algumaFutura := false
+	for _, it := range d.Itens {
+		com := it.DataCom
+		if it.ComFutura {
+			com += " *"
+			algumaFutura = true
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n", it.Pagamento, it.Ticker, it.Tipo, com, it.Qtd, it.ValorAcao, it.Bruto, it.Liquido)
+	}
+	fmt.Fprintf(tw, "Total\t\t\t\t\t\t%s\t%s\t\n", d.TotalBruto, d.TotalLiquido)
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+	fmt.Fprintln(a.saida, "\nQuantidade = ações que você tinha na data-com (pelas operações gravadas). JCP tem 15% de IR retido.")
+	if algumaFutura {
+		fmt.Fprintln(a.saida, "* data-com ainda não passou: vale a quantidade que você tiver nesse dia (usada a de hoje).")
+	}
+	fmt.Fprintln(a.saida, "Fonte: site da B3 (empresas listadas). Compras que ainda não estão no extrato não entram na conta.")
+	imprimirLista(a.saida, "Observações:", d.Notas)
+	return nil
+}
+
+// dadosAgenda busca na B3 os proventos anunciados e calcula quanto cabe a você.
+func (a *app) dadosAgenda(ctx context.Context) (dadosAgenda, error) {
+	d := dadosAgenda{Data: formato.Data(a.agora())}
+	ops, err := a.banco.Operacoes("")
+	if err != nil {
+		return d, err
 	}
 	hoje := a.agora()
 	hojeData := time.Date(hoje.Year(), hoje.Month(), hoje.Day(), 0, 0, 0, 0, time.UTC)
@@ -325,10 +439,9 @@ func (a *app) agenda(ctx context.Context) error {
 			}
 		}
 	}
+	d.Notas = notas
 	if len(itens) == 0 {
-		fmt.Fprintln(a.saida, "Nenhum provento anunciado a receber.")
-		imprimirLista(a.saida, "Observações:", notas)
-		return nil
+		return d, nil
 	}
 	slices.SortStableFunc(itens, func(x, y itemAgenda) int {
 		px, py := x.anuncio.Pagamento, y.anuncio.Pagamento
@@ -344,35 +457,21 @@ func (a *app) agenda(ctx context.Context) error {
 		return cmp.Compare(x.ticker, y.ticker)
 	})
 
-	fmt.Fprintf(a.saida, "Proventos a receber em %s (R$)\n\n", formato.Data(hoje))
-	tw := tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', tabwriter.AlignRight)
-	fmt.Fprintln(tw, "Pagamento\tAtivo\tTipo\tData-com\tQtd\tR$/ação\tBruto\tLíquido\t")
 	var totBruto, totLiq float64
 	for _, it := range itens {
 		pag := "a definir"
 		if !it.anuncio.Pagamento.IsZero() {
 			pag = formato.Data(it.anuncio.Pagamento)
 		}
-		com := formato.Data(it.anuncio.DataCom)
-		if it.comFutura {
-			com += " *"
-		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n", pag, it.ticker, nomeProvento(it.anuncio.Tipo), com,
-			formato.Quantidade(it.qtd), formato.Numero(it.anuncio.Valor, 4), formato.Moeda(it.bruto), formato.Moeda(it.liq))
+		d.Itens = append(d.Itens, linhaAgenda{Pagamento: pag, Ticker: it.ticker, Tipo: nomeProvento(it.anuncio.Tipo),
+			DataCom: formato.Data(it.anuncio.DataCom), ComFutura: it.comFutura, Qtd: formato.Quantidade(it.qtd),
+			ValorAcao: formato.Numero(it.anuncio.Valor, 4), Bruto: formato.Moeda(it.bruto), Liquido: formato.Moeda(it.liq),
+			Referente: it.anuncio.Referente})
 		totBruto += it.bruto
 		totLiq += it.liq
 	}
-	fmt.Fprintf(tw, "Total\t\t\t\t\t\t%s\t%s\t\n", formato.Moeda(totBruto), formato.Moeda(totLiq))
-	if err := tw.Flush(); err != nil {
-		return err
-	}
-	fmt.Fprintln(a.saida, "\nQuantidade = ações que você tinha na data-com (pelas operações gravadas). JCP tem 15% de IR retido.")
-	if slices.ContainsFunc(itens, func(it itemAgenda) bool { return it.comFutura }) {
-		fmt.Fprintln(a.saida, "* data-com ainda não passou: vale a quantidade que você tiver nesse dia (usada a de hoje).")
-	}
-	fmt.Fprintln(a.saida, "Fonte: site da B3 (empresas listadas). Compras que ainda não estão no extrato não entram na conta.")
-	imprimirLista(a.saida, "Observações:", notas)
-	return nil
+	d.TotalBruto, d.TotalLiquido = formato.Moeda(totBruto), formato.Moeda(totLiq)
+	return d, nil
 }
 
 // quantidadeEm: quantidade do ativo no fim do dia d.

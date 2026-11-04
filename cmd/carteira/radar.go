@@ -96,22 +96,97 @@ type candidato struct {
 	dias int // pregões com negócio no último ano
 }
 
+// itemRadar é uma ação avaliada pelo filtro.
+type itemRadar struct {
+	Ticker     string          `json:"ticker"`
+	Nome       string          `json:"nome"`
+	NaCarteira bool            `json:"naCarteira"`
+	Cumpridos  int             `json:"cumpridos"`
+	Total      int             `json:"total"`
+	Criterios  []criterioRadar `json:"criterios"`
+	Obs        string          `json:"obs"`
+}
+
+type criterioRadar struct {
+	Nome      string `json:"nome"`
+	Valor     string `json:"valor"`
+	OK        bool   `json:"ok"`
+	NaoAplica bool   `json:"naoAplica"`
+}
+
+type dadosRadar struct {
+	Data        string      `json:"data"`
+	Analisadas  int         `json:"analisadas"`
+	SemLiquidez int         `json:"semLiquidez"`
+	PrecosAte   string      `json:"precosAte"`
+	Criterios   []string    `json:"criterios"`
+	Itens       []itemRadar `json:"itens"` // todas, da melhor para a pior
+	Notas       []string    `json:"notas"`
+}
+
 func (a *app) radar(ctx context.Context, args []string) error {
 	todas := len(args) == 1 && strings.EqualFold(args[0], "todas")
 	if len(args) > 0 && !todas {
 		return errors.New("uso: carteira radar [todas]")
 	}
+	d, err := a.dadosRadar(ctx)
+	if err != nil {
+		imprimirLista(a.saida, "Observações:", d.Notas)
+		return err
+	}
+	mostrar := d.Itens
+	if !todas && len(mostrar) > radarTopo {
+		mostrar = mostrar[:radarTopo]
+	}
+	fmt.Fprintf(a.saida, "Radar em %s · %d empresas analisadas (%d códigos sem liquidez ficaram fora) · preços até %s\n\n",
+		d.Data, d.Analisadas, d.SemLiquidez, d.PrecosAte)
+	tw := tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', 0)
+	cab := append([]string{"Ativo", "Nota"}, d.Criterios...)
+	fmt.Fprintln(tw, strings.Join(append(cab, "Obs."), "\t"))
+	for _, it := range mostrar {
+		nome := it.Ticker
+		if it.NaCarteira {
+			nome = "* " + nome
+		}
+		linha := []string{nome, fmt.Sprintf("%d/%d", it.Cumpridos, it.Total)}
+		for _, c := range it.Criterios {
+			marca := " ✗"
+			switch {
+			case c.NaoAplica:
+				marca = ""
+			case c.OK:
+				marca = " ✓"
+			}
+			linha = append(linha, c.Valor+marca)
+		}
+		linha = append(linha, it.Obs)
+		fmt.Fprintln(tw, strings.Join(linha, "\t"))
+	}
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+	if !todas && len(d.Itens) > radarTopo {
+		fmt.Fprintf(a.saida, "\nMostrando as %d melhores de %d. Para ver todas: carteira radar todas\n", radarTopo, len(d.Itens))
+	}
+	fmt.Fprintln(a.saida, "\n* = já na carteira · nenhum critério elimina sozinho: a nota é quantos o ativo cumpre · n/a = não se aplica (ROIC de banco)")
+	fmt.Fprintln(a.saida, "P/L com o fechamento do último pregão do COTAHIST · limites: carteira filtro · conta de um número: carteira explicar <ATIVO> <indicador>")
+	return nil
+}
+
+// dadosRadar avalia pelo filtro todas as ações com liquidez.
+func (a *app) dadosRadar(ctx context.Context) (dadosRadar, error) {
+	d := dadosRadar{Data: formato.Data(a.agora())}
 	lim, err := a.limites()
 	if err != nil {
-		return err
+		return d, err
 	}
 	if err := a.garantirCVM(ctx); err != nil {
-		return err
+		return d, err
 	}
 	m, notas, ok := a.prepararMercado(ctx)
+	d.Notas = notas
 	if !ok {
-		imprimirLista(a.saida, "Observações:", notas)
-		return errors.New("o radar precisa do histórico de preços")
+		return d, errors.New("o radar precisa do histórico de preços")
 	}
 
 	// Pregões do último ano, pelo BOVA11.
@@ -126,14 +201,14 @@ func (a *app) radar(ctx context.Context, args []string) error {
 	// Um código por empresa: o negociado em mais pregões no último ano.
 	tks, err := a.banco.TickersCVM()
 	if err != nil {
-		return err
+		return d, err
 	}
 	porEmpresa := map[string]candidato{}
 	semLiquidez := 0
 	for _, tk := range tks {
 		ps, err := a.banco.Precos(tk.Codigo)
 		if err != nil {
-			return err
+			return d, err
 		}
 		dias := 0
 		for _, p := range ps {
@@ -162,13 +237,13 @@ func (a *app) radar(ctx context.Context, args []string) error {
 
 	carteiraHoje, err := a.posicoesAbertas()
 	if err != nil {
-		return err
+		return d, err
 	}
 	var avs []radar.Avaliacao
 	for _, c := range escolhidos {
 		contas, comps, err := a.banco.Balancos(c.tk.CNPJ)
 		if err != nil {
-			return err
+			return d, err
 		}
 		h, _ := a.historico(ctx, c.tk.Codigo, m)
 		if len(h.Precos) == 0 {
@@ -190,35 +265,16 @@ func (a *app) radar(ctx context.Context, args []string) error {
 	})
 
 	if len(avs) == 0 {
-		return errors.New("nenhuma empresa com balanço e preços para avaliar")
+		return d, errors.New("nenhuma empresa com balanço e preços para avaliar")
 	}
-	mostrar := avs
-	if !todas && len(mostrar) > radarTopo {
-		mostrar = mostrar[:radarTopo]
-	}
-	fmt.Fprintf(a.saida, "Radar em %s · %d empresas analisadas (%d códigos sem liquidez ficaram fora) · preços até %s\n\n",
-		formato.Data(a.agora()), len(avs), semLiquidez, formato.Data(m.ate))
-	tw := tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', 0)
-	cab := []string{"Ativo", "Nota"}
+	d.Analisadas, d.SemLiquidez, d.PrecosAte = len(avs), semLiquidez, formato.Data(m.ate)
 	for _, c := range avs[0].Criterios {
-		cab = append(cab, c.Nome)
+		d.Criterios = append(d.Criterios, c.Nome)
 	}
-	fmt.Fprintln(tw, strings.Join(append(cab, "Obs."), "\t"))
-	for _, av := range mostrar {
-		nome := av.Ticker
-		if carteiraHoje[av.Ticker] {
-			nome = "* " + nome
-		}
-		linha := []string{nome, fmt.Sprintf("%d/%d", av.Cumpridos, av.Total)}
+	for _, av := range avs {
+		it := itemRadar{Ticker: av.Ticker, Nome: av.Nome, NaCarteira: carteiraHoje[av.Ticker], Cumpridos: av.Cumpridos, Total: av.Total}
 		for _, c := range av.Criterios {
-			marca := " ✗"
-			switch {
-			case c.NaoAplica:
-				marca = ""
-			case c.OK:
-				marca = " ✓"
-			}
-			linha = append(linha, c.Valor+marca)
+			it.Criterios = append(it.Criterios, criterioRadar{Nome: c.Nome, Valor: c.Valor, OK: c.OK, NaoAplica: c.NaoAplica})
 		}
 		var obs []string
 		if av.HistoricoCurto {
@@ -227,18 +283,10 @@ func (a *app) radar(ctx context.Context, args []string) error {
 		if len(av.Trimestres) > 0 {
 			obs = append(obs, "prejuízo em "+strings.Join(av.Trimestres, ", "))
 		}
-		linha = append(linha, strings.Join(obs, "; "))
-		fmt.Fprintln(tw, strings.Join(linha, "\t"))
+		it.Obs = strings.Join(obs, "; ")
+		d.Itens = append(d.Itens, it)
 	}
-	if err := tw.Flush(); err != nil {
-		return err
-	}
-	if !todas && len(avs) > radarTopo {
-		fmt.Fprintf(a.saida, "\nMostrando as %d melhores de %d. Para ver todas: carteira radar todas\n", radarTopo, len(avs))
-	}
-	fmt.Fprintln(a.saida, "\n* = já na carteira · nenhum critério elimina sozinho: a nota é quantos o ativo cumpre · n/a = não se aplica (ROIC de banco)")
-	fmt.Fprintln(a.saida, "P/L com o fechamento do último pregão do COTAHIST · limites: carteira filtro · conta de um número: carteira explicar <ATIVO> <indicador>")
-	return nil
+	return d, nil
 }
 
 // preferencia desempata códigos da mesma empresa: unit, depois PN, depois ON.
