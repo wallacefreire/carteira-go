@@ -7,8 +7,10 @@ Controle de investimentos pessoal do Wallace, em Go, no terminal. Os indicadores
 - Tudo em **português**: identificadores, comentários, mensagens, testes. Mantenha esse padrão.
 - Antes de afirmar algo sobre um formato de dados (CSV da CVM, extrato da B3, API), baixe uma amostra e confira. Vários bugs vieram de suposições.
 - Ao terminar, rode `gofmt -l .`, `go vet ./...` e `go test ./...`.
+- **Depois de cada mudança, sem perguntar:** commit (mensagem em português) e "deploy" da tela: parar o `carteira.exe` que roda a tela, `go build -o carteira.exe ./cmd/carteira` e subir `carteira.exe web` de novo (com `BRAPI_TOKEN` do registro e sem `CARTEIRA_DB`). O `git push` é com o Wallace (neste PC o push pode pedir login do GitHub).
 - Para testar com dados reais, use um banco temporário: `CARTEIRA_DB=<scratchpad>/teste.db`. O banco real é `%AppData%\carteira\carteira.db`.
-- Repositório git local (branch `main`). Extratos (`*.xlsx`) e bancos (`*.db`) ficam fora pelo `.gitignore`.
+- Repositório git (branch `main`), espelhado em github.com/wallacefreire/carteira-go, que é **público**: extratos (`*.xlsx`), bancos (`*.db`) e o `carteira.exe` ficam fora pelo `.gitignore`. Nunca suba dados pessoais, tokens ou chaves.
+- O PC principal agora é o de casa (03/11/2026): banco real em `%AppData%\carteira\carteira.db` (veio do outro PC), token do brapi no registro.
 
 ## Comandos
 ```
@@ -61,7 +63,7 @@ go run ./cmd/carteira web                  # tela em http://localhost:8080
 - Eventos da B3: `GetListedSupplementCompany` dá desdobramento/grupamento/bonificação (por ISIN; desdobramento e bonificação em %, grupamento como multiplicador) e o nome de pregão. Os proventos dele são só de 12 meses: o histórico vem de `GetListedCashDividends` (por espécie ON/PN/UNT, `pageSize` até 120, nome de pregão com os espaços do fim).
 - Beta e volatilidade por ano: retornos diários. Coluna 12m: beta e correlação com retornos semanais de 2 anos; volatilidade dos últimos 252 pregões. Correlação: carteira com os pesos de hoje, sem o próprio ativo.
 
-- **Tesouro desligado por padrão:** os títulos do extrato hoje são de terceiros, não do Wallace. A importação pula o Tesouro até `carteira tesouro sim` (config `importar_tesouro`); depois de ligar, importar de novo traz tudo.
+- **Tesouro:** a importação pula o Tesouro até `carteira tesouro sim` (config `importar_tesouro`; no banco real já está ligado). Desde 03/11/2026 o **Tesouro IPCA+ 2032 é do Wallace** e conta na carteira; Tesouro Selic 2031 e os títulos antigos já vendidos (IPCA+ 2050, Selic 2025, 2027 e 2029) são de terceiros e estão ocultos (`carteira ocultar`). Título novo do Tesouro entra como do Wallace: se for de terceiros, ocultar.
 - **Tesouro (Fase 3):** vem do extrato da B3 como Compra/Venda com o nome do título ("Tesouro Selic 2031"), que é o próprio código do ativo. Preço = PU de venda mais recente do CSV do Tesouro Transparente (~15 MB, baixado a cada 12 h em `dirDados/tesouro`). O extrato arredonda a quantidade para 0,01: o valor pode diferir do da corretora (corrigir com `carteira ajuste`).
 - **BTC:** só lançamento manual (`carteira compra BTC …`); preço em reais pela CoinGecko.
 - O teto por ativo **não vale para o Tesouro**. Indicadores e correlação usam só ativos da bolsa.
@@ -72,6 +74,8 @@ go run ./cmd/carteira web                  # tela em http://localhost:8080
 
 ## Fase 5 (em andamento)
 **Feito (03/11/2026):** `carteira web [PORTA]` abre a tela em http://localhost:8080, só neste PC (127.0.0.1, sem login). `cmd/carteira/web.go` tem a API (`/api/posicao`, `proventos`, `agenda`, `indicadores?ativos=`, `radar`, `POST /api/importar`) e `web/index.html` (embutido com `go:embed`) as abas, o modal de mês novo e o painel ⓘ com a memória de cálculo. Cada comando tem uma função `dadosX` que monta os dados já formatados; o terminal e a tela usam a mesma, então os números são iguais. Um pedido por vez (mutex) e um `app` novo por pedido (caches de uma execução só).
+**Na tela também:** radar ordena clicando no título da coluna; Proventos mostra primeiro os ativos de hoje, a tabela por mês (clique no mês = de quais ativos veio) e os vendidos recolhidos; cada aba tem endereço próprio (`#radar`, `#indicadores`…). Na primeira vez num banco novo, Indicadores e Radar demoram minutos (baixam CVM, COTAHIST e eventos de ~230 empresas); depois é rápido.
+**Para investigar:** P/L de 0,01 da SANB11 no radar (errado; suspeita na conta de ações/unit); lucro 12m da SAPR11 (R$ 455 mi) muito abaixo do de 2025 (R$ 2.080 mi).
 **Falta:** login (bcrypt, sessão 30 dias, bloqueio) e acesso pela internet. Hospedagem em aberto: a VM da Oracle não sai ("Out of host capacity"); alternativa pesquisada é deixar neste PC com Tailscale Funnel. Ver [PLANO.md](PLANO.md).
 
 Lembrete mensal: **na tela, não no Windows** (Wallace pediu). A posição mostra um aviso no topo quando o mês virou desde a última importação (config `ultima_importacao`, gravada por `carteira importar`). Na tela web: **modal** sobre tudo, fundo com blur gaussiano (`backdrop-filter: blur`), passo a passo + botão de importar; fecha no X ou clicando fora.
@@ -81,7 +85,7 @@ Fase 5, acesso: **na nuvem** (Oracle Cloud Always Free, conta sem upgrade, VM A1
 ## Estado da hospedagem (28/10/2026)
 - Conta Oracle Cloud: tenancy `wallacecarteira`, região São Paulo (`sa-saopaulo-1`), em Free Trial. Só recursos **Always Free**, sem upgrade.
 - **Rede pronta** (criada por API): VCN `carteira-vcn` (10.0.0.0/16), sub-rede pública `carteira-publica` (10.0.0.0/24), internet gateway e rota padrão. Portas 22, 80 e 443 liberadas na security list padrão.
-- **VM ainda não criada:** `carteira`, `VM.Standard.A1.Flex` (1 OCPU, 6 GB), Ubuntu 26.04 aarch64. A Oracle responde "Out of host capacity" (no console e por API). No PC de casa, um script (SDK Python `oci`, fora do repositório) tenta criar a cada minuto.
+- **VM ainda não criada:** `carteira`, `VM.Standard.A1.Flex` (1 OCPU, 6 GB), Ubuntu 26.04 aarch64. A Oracle responde "Out of host capacity" (no console e por API). No PC de casa, o script `C:\Users\Lenovo\.oci\carteira_vm.py` (SDK Python `oci`, fora do repositório) tenta criar a cada minuto enquanto está rodando (log em `C:\Users\Lenovo\.oci\carteira_vm.log`; para quando o PC desliga). Até 03/11/2026, só "sem vaga".
 - As chaves (API da Oracle e SSH da VM, usuário `ubuntu`) ficam **só no PC de casa**. Nunca grave chaves no repositório.
 - Quando a VM existir: liberar 80/443 também no firewall do Ubuntu (as imagens da Oracle vêm com iptables bloqueando tudo menos SSH), compilar para o servidor com `GOOS=linux GOARCH=arm64`, serviço systemd e HTTPS automático.
 - A tela web já existe (ver "Fase 5 (em andamento)"); falta login e hospedagem, que não dependem da Oracle para serem programados.
