@@ -104,6 +104,7 @@ type itemRadar struct {
 	Cumpridos  int             `json:"cumpridos"`
 	Total      int             `json:"total"`
 	Criterios  []criterioRadar `json:"criterios"`
+	EVEbitda   string          `json:"evEbitda"` // só informativo, fora da nota
 	Obs        string          `json:"obs"`
 }
 
@@ -142,7 +143,7 @@ func (a *app) radar(ctx context.Context, args []string) error {
 		d.Data, d.Analisadas, d.SemLiquidez, d.PrecosAte)
 	tw := tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', 0)
 	cab := append([]string{"Ativo", "Nota"}, d.Criterios...)
-	fmt.Fprintln(tw, strings.Join(append(cab, "Obs."), "\t"))
+	fmt.Fprintln(tw, strings.Join(append(cab, "EV/EBITDA", "Obs."), "\t"))
 	for _, it := range mostrar {
 		nome := it.Ticker
 		if it.NaCarteira {
@@ -159,7 +160,7 @@ func (a *app) radar(ctx context.Context, args []string) error {
 			}
 			linha = append(linha, c.Valor+marca)
 		}
-		linha = append(linha, it.Obs)
+		linha = append(linha, it.EVEbitda, it.Obs)
 		fmt.Fprintln(tw, strings.Join(linha, "\t"))
 	}
 	if err := tw.Flush(); err != nil {
@@ -168,7 +169,7 @@ func (a *app) radar(ctx context.Context, args []string) error {
 	if !todas && len(d.Itens) > radarTopo {
 		fmt.Fprintf(a.saida, "\nMostrando as %d melhores de %d. Para ver todas: carteira radar todas\n", radarTopo, len(d.Itens))
 	}
-	fmt.Fprintln(a.saida, "\n* = já na carteira · nenhum critério elimina sozinho: a nota é quantos o ativo cumpre · n/a = não se aplica (ROIC de banco)")
+	fmt.Fprintln(a.saida, "\n* = já na carteira · nenhum critério elimina sozinho: a nota é quantos o ativo cumpre · n/a = não se aplica (ROIC e EV/EBITDA de banco) · EV/EBITDA é só informativo")
 	fmt.Fprintln(a.saida, "P/L com o fechamento do último pregão do COTAHIST · limites: carteira filtro · conta de um número: carteira explicar <ATIVO> <indicador>")
 	return nil
 }
@@ -272,7 +273,7 @@ func (a *app) dadosRadar(ctx context.Context) (dadosRadar, error) {
 		d.Criterios = append(d.Criterios, c.Nome)
 	}
 	for _, av := range avs {
-		it := itemRadar{Ticker: av.Ticker, Nome: av.Nome, NaCarteira: carteiraHoje[av.Ticker], Cumpridos: av.Cumpridos, Total: av.Total}
+		it := itemRadar{Ticker: av.Ticker, Nome: av.Nome, NaCarteira: carteiraHoje[av.Ticker], Cumpridos: av.Cumpridos, Total: av.Total, EVEbitda: av.EVEbitda}
 		for _, c := range av.Criterios {
 			it.Criterios = append(it.Criterios, criterioRadar{Nome: c.Nome, Valor: c.Valor, OK: c.OK, NaoAplica: c.NaoAplica})
 		}

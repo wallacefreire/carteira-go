@@ -1,4 +1,4 @@
-// Package indicadores calcula lucro, P/L, ROE, ROIC, endividamento e liquidez
+// Package indicadores calcula lucro, P/L, EV/EBITDA, ROE, ROIC, endividamento e liquidez
 // a partir dos balanços da CVM, guardando a memória de cálculo de cada número
 // (fórmula, valores usados e de onde vieram) para o botão ⓘ.
 package indicadores
@@ -32,6 +32,8 @@ var Lista = []Def{
 		"crescendo é bom; prejuízo no ano reprova no filtro"},
 	{"pl", "P/L", "x", "(ações × cotação) ÷ lucro líquido; no ano, cotação de fechamento do último pregão do ano; em 12m, cotação atual",
 		"abaixo de 10: barato · 10 a 20: médio · acima de 20: caro (compare com o setor) · negativo: prejuízo"},
+	{"ev_ebitda", "EV/EBITDA", "x", "(valor de mercado + dívida líquida + sócios de controladas) ÷ (EBIT + depreciação e amortização); valor de mercado como no P/L",
+		"abaixo de 6: barato · 6 a 10: médio · acima de 10: caro (compare com o setor) · não serve para bancos"},
 	{"roe", "ROE", "%", "lucro líquido ÷ patrimônio líquido médio (início e fim do período)",
 		"acima de 15%: bom · 10% a 15%: ok · abaixo de 10%: fraco"},
 	{"roic", "ROIC", "%", "EBIT × (1 − 34%) ÷ (patrimônio líquido + dívida líquida)",
@@ -136,7 +138,9 @@ func Calcular(t cvm.Ticker, contas []cvm.Conta, comps []cvm.Composicao, cot Cota
 	for _, a := range anos {
 		j := janela{termos: []termo{{a.ini, a.fim, 1}}}
 		col := c.coluna(fmt.Sprint(a.fim.Year()), j, a.fim, a.fim.AddDate(-1, 0, 0), r.Financeira)
-		col.Valores["pl"] = c.plAno(t, comps, h, a, col.Valores["lucro"], &r)
+		m := c.mercadoAno(t, comps, h, a, &r)
+		col.Valores["pl"] = pl(m, col.Valores["lucro"])
+		col.Valores["ev_ebitda"] = c.evEbitda(m, j, a.fim, r.Financeira)
 		riscoAno(col, h, a.fim.Year())
 		colunasAnuais = append(colunasAnuais, col)
 	}
@@ -145,7 +149,9 @@ func Calcular(t cvm.Ticker, contas []cvm.Conta, comps []cvm.Composicao, cot Cota
 	j12, fim12 := c.janela12m(anos[len(anos)-1])
 	r.UltimoBalanco = fim12
 	col12 := c.coluna("12m", j12, fim12, fim12.AddDate(-1, 0, 0), r.Financeira)
-	col12.Valores["pl"] = c.pl(t, comps, cot, time.Time{}, anos[len(anos)-1], col12.Valores["lucro"], &r)
+	m12 := c.valorMercado(t, comps, cot, time.Time{}, anos[len(anos)-1], &r)
+	col12.Valores["pl"] = pl(m12, col12.Valores["lucro"])
+	col12.Valores["ev_ebitda"] = c.evEbitda(m12, j12, fim12, r.Financeira)
 	risco12m(col12, h)
 	r.Colunas = append(r.Colunas, col12)
 	r.Colunas = append(r.Colunas, media(colunasAnuais))
@@ -468,42 +474,48 @@ func concat(ls ...[]Parte) []Parte {
 	return r
 }
 
-// ---------- P/L ----------
+// ---------- P/L e EV/EBITDA ----------
 
-// plAno usa o fechamento do último pregão do ano (sem ajuste: é o valor de
-// mercado real daquele dia) e o número de ações do balanço do mesmo ano.
-func (c calc) plAno(t cvm.Ticker, comps []cvm.Composicao, h Historico, a periodo, lucro Valor, r *Resultado) Valor {
+// mercado é o valor de mercado numa data, com a memória de cálculo.
+// Motivo preenchido = não deu para calcular.
+type mercado struct {
+	valor  float64
+	partes []Parte
+	nota   string
+	motivo string
+}
+
+// mercadoAno usa o fechamento do último pregão do ano (sem ajuste: é o valor
+// de mercado real daquele dia) e o número de ações do balanço do mesmo ano.
+func (c calc) mercadoAno(t cvm.Ticker, comps []cvm.Composicao, h Historico, a periodo, r *Resultado) mercado {
 	if len(h.Precos) == 0 {
-		return Valor{Motivo: motivoHistorico}
+		return mercado{motivo: motivoHistorico}
 	}
 	p, ok := ultimoAte(h.Precos, a.fim)
 	if !ok || a.fim.Sub(p.Data) > 15*24*time.Hour {
-		return Valor{Motivo: "sem pregão no fim do ano"}
+		return mercado{motivo: "sem pregão no fim do ano"}
 	}
 	cot := Cotacao{Preco: p.Valor, Fonte: fmt.Sprintf("%s, fechamento de %s", h.Fonte, formato.Data(p.Data))}
-	return c.pl(t, comps, cot, a.fim, a, lucro, r)
+	return c.valorMercado(t, comps, cot, a.fim, a, r)
 }
 
-// pl = valor de mercado ÷ lucro. O valor de mercado usa todas as ações
-// (ON + PN, sem tesouraria) ao preço por ação do código consultado; numa
-// unit, preço por ação = preço da unit ÷ ações dentro dela. O número de
-// ações é o da composição mais nova até a data ate (zero = sem limite);
-// ano é o exercício usado para conferir se ele veio em milhares.
-func (c calc) pl(t cvm.Ticker, comps []cvm.Composicao, cot Cotacao, ate time.Time, ano periodo, lucro Valor, r *Resultado) Valor {
-	if !lucro.OK {
-		return Valor{Motivo: motivoSemDado}
-	}
+// valorMercado usa todas as ações (ON + PN, sem tesouraria) ao preço por
+// ação do código consultado; numa unit, preço por ação = preço da unit ÷
+// ações dentro dela. O número de ações é o da composição mais nova até a
+// data ate (zero = sem limite); ano é o exercício usado para conferir se ele
+// veio em milhares.
+func (c calc) valorMercado(t cvm.Ticker, comps []cvm.Composicao, cot Cotacao, ate time.Time, ano periodo, r *Resultado) mercado {
 	if cot.Preco <= 0 {
-		return Valor{Motivo: "sem cotação"}
+		return mercado{motivo: "sem cotação"}
 	}
 	if t.AcoesPorUnidade <= 0 {
-		return Valor{Motivo: "composição da unit desconhecida"}
+		return mercado{motivo: "composição da unit desconhecida"}
 	}
 	if !ate.IsZero() {
 		comps = slices.DeleteFunc(slices.Clone(comps), func(x cvm.Composicao) bool { return x.DtRefer.After(ate) })
 	}
 	if len(comps) == 0 {
-		return Valor{Motivo: "número de ações não encontrado na CVM"}
+		return mercado{motivo: "número de ações não encontrado na CVM"}
 	}
 	comp := slices.MaxFunc(comps, func(a, b cvm.Composicao) int {
 		if x := a.DtRefer.Compare(b.DtRefer); x != 0 {
@@ -512,30 +524,72 @@ func (c calc) pl(t cvm.Ticker, comps []cvm.Composicao, cot Cotacao, ate time.Tim
 		return cmp.Compare(a.Versao, b.Versao)
 	})
 	acoes := comp.Total()
-	nota := ""
+	m := mercado{}
 	if fator := c.escalaAcoes(acoes, ano); fator != 1 {
 		acoes *= fator
-		nota = "a CVM traz o número de ações em milhares para esta empresa; multiplicado por 1.000 (conferido com o lucro por ação)"
+		m.nota = "a CVM traz o número de ações em milhares para esta empresa; multiplicado por 1.000 (conferido com o lucro por ação)"
 		r.avisar("número de ações veio em milhares na CVM; corrigido com o lucro por ação")
 	}
 	precoAcao := cot.Preco / t.AcoesPorUnidade
-	vm := acoes * precoAcao
+	m.valor = acoes * precoAcao
 
-	partes := []Parte{{
+	m.partes = []Parte{{
 		Nome: "Ações (ON + PN − tesouraria)", Valor: acoes,
 		Origem: fmt.Sprintf("composição do capital, %s", formato.Data(comp.DtRefer)),
 	}, {
 		Nome: "Cotação " + t.Codigo, Valor: cot.Preco, Moeda: true, Origem: cot.Fonte,
 	}}
 	if !cot.Horario.IsZero() {
-		partes[1].Origem += ", " + cot.Horario.Local().Format("02/01/2006 15:04")
+		m.partes[1].Origem += ", " + cot.Horario.Local().Format("02/01/2006 15:04")
 	}
 	if t.AcoesPorUnidade != 1 {
-		partes = append(partes, Parte{Nome: "Ações por unit", Valor: t.AcoesPorUnidade, Origem: "FCA (CVM)"})
+		m.partes = append(m.partes, Parte{Nome: "Ações por unit", Valor: t.AcoesPorUnidade, Origem: "FCA (CVM)"})
 	}
-	partes = append(partes, Parte{Nome: "Valor de mercado", Valor: vm, Moeda: true, Origem: "ações × preço por ação"})
-	v := dividir(vm, lucro.Numero, concat(partes, lucro.Partes), nota)
-	return v
+	m.partes = append(m.partes, Parte{Nome: "Valor de mercado", Valor: m.valor, Moeda: true, Origem: "ações × preço por ação"})
+	return m
+}
+
+// pl = valor de mercado ÷ lucro.
+func pl(m mercado, lucro Valor) Valor {
+	if !lucro.OK {
+		return Valor{Motivo: motivoSemDado}
+	}
+	if m.motivo != "" {
+		return Valor{Motivo: m.motivo}
+	}
+	return dividir(m.valor, lucro.Numero, concat(m.partes, lucro.Partes), m.nota)
+}
+
+// evEbitda = (valor de mercado + dívida líquida + PL de sócios de controladas)
+// ÷ EBITDA do período. Os sócios de controladas entram porque o EBITDA
+// consolidado inclui a parte deles (ex.: SOJA3 consolida o SNAG11).
+func (c calc) evEbitda(m mercado, j janela, fim time.Time, financeira bool) Valor {
+	if financeira {
+		return Valor{Motivo: motivoFinanceira}
+	}
+	if m.motivo != "" {
+		return Valor{Motivo: m.motivo}
+	}
+	dl, partesDL, okDL := c.dividaLiquida(fim)
+	ebit, partesEbit, okEbit := j.soma("EBIT", c.ebit)
+	da, partesDA, okDA := j.soma("Depreciação e amortização", c.da)
+	if !okDL || !okEbit || !okDA {
+		return Valor{Motivo: motivoSemDado}
+	}
+	if ebit+da <= 0 {
+		return Valor{Motivo: "EBITDA negativo ou zero"}
+	}
+	partes := concat(m.partes, partesDL)
+	ev := m.valor + dl
+	if c.consolidadoEm(fim) {
+		if minor, p, ok := c.saldo("PL de sócios de controladas", fim, fonte{"pl_nao_controladores", true}); ok && minor != 0 {
+			ev += minor
+			partes = append(partes, p)
+		}
+	}
+	partes = append(partes, Parte{Nome: "EV (valor da firma)", Valor: ev, Moeda: true, Origem: "valor de mercado + dívida líquida + sócios de controladas"})
+	partes = append(partes, Parte{Nome: "EBITDA", Valor: ebit + da, Moeda: true, Origem: "EBIT + depreciação e amortização"})
+	return dividir(ev, ebit+da, concat(partes, partesEbit, partesDA), m.nota)
 }
 
 // escalaAcoes confere o número de ações com lucro ÷ lucro por ação do ano.

@@ -216,3 +216,20 @@ func TestPrejuizoTrimestral(t *testing.T) {
 		t.Errorf("trimestres com prejuízo: %v", r.PrejuizoTrimestral)
 	}
 }
+
+func TestEVEbitda(t *testing.T) {
+	c := calc{contas: empresaExemplo()}
+	ano := periodo{d("2025-01-01"), d("2025-12-31")}
+	j := janela{termos: []termo{{ano.ini, ano.fim, 1}}}
+	m := mercado{valor: 1800}
+	// EV = 1.800 de mercado + 400 de dívida líquida + 100 de sócios de controladas; EBITDA = 300.
+	if v := c.evEbitda(m, j, ano.fim, false); !v.OK || !perto(v.Numero, 2300.0/300) {
+		t.Errorf("EV/EBITDA = %+v, quer %v", v, 2300.0/300)
+	}
+	if v := c.evEbitda(m, j, ano.fim, true); v.OK || v.Motivo != motivoFinanceira {
+		t.Errorf("banco: %+v", v)
+	}
+	if v := c.evEbitda(mercado{motivo: "sem cotação"}, j, ano.fim, false); v.OK {
+		t.Error("sem valor de mercado não devia ter EV/EBITDA")
+	}
+}

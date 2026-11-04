@@ -40,8 +40,8 @@ Uso:
   carteira proventos [ANO]                  proventos recebidos por mês e por ativo
   carteira agenda                           proventos anunciados que ainda vão ser pagos
   carteira indicadores [ATIVO...]           indicadores dos balanços (padrão: carteira + observação)
-  carteira explicar <ATIVO> <INDICADOR>     memória de cálculo (lucro, pl, roe, roic, dl_ebitda, dl_pl,
-                                            liquidez, beta, volatilidade, correlacao)
+  carteira explicar <ATIVO> <INDICADOR>     memória de cálculo (lucro, pl, ev_ebitda, roe, roic, dl_ebitda,
+                                            dl_pl, liquidez, beta, volatilidade, correlacao)
   carteira cvm                              baixa de novo os balanços da CVM (é automático 1x por semana)
   carteira precos                           baixa de novo o histórico de preços da B3 (automático 1x por semana)
   carteira web [PORTA]                      abre a tela no navegador: http://localhost:8080 (só neste PC)

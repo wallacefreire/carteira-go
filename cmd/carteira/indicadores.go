@@ -293,7 +293,7 @@ func (a *app) fonteIndicador(chave string) string {
 	switch chave {
 	case "beta", "volatilidade", "correlacao":
 		return "B3, histórico de preços (COTAHIST) até " + precosAte(a) + ", ajustado pelos proventos e eventos do site da B3"
-	case "pl":
+	case "pl", "ev_ebitda":
 		return "CVM (DFP e ITR), atualizados em " + atualizado + " · preços: B3 (COTAHIST) nos anos, brapi em 12m"
 	}
 	return "CVM, dados abertos (DFP e ITR), atualizados em " + atualizado

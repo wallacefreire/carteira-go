@@ -41,6 +41,7 @@ type Avaliacao struct {
 	HistoricoCurto bool     // menos de 5 anos de balanço
 	Trimestres     []string // trimestres com prejuízo (alerta, não reprova)
 	PL             float64  // para desempatar
+	EVEbitda       string   // só informativo: não conta na nota
 }
 
 // Nota é a fração de critérios cumpridos.
@@ -98,6 +99,7 @@ func Avaliar(r indicadores.Resultado, lim Limites) Avaliacao {
 	av.adicionar(criterio("ROIC 5a", media.Valores["roic"], "%", func(v float64) bool { return v >= lim.ROICMin }))
 	av.adicionar(criterio("Beta", m12.Valores["beta"], "x", func(v float64) bool { return v <= lim.BetaMax }))
 	av.adicionar(criterio("Correl.", m12.Valores["correlacao"], "x", func(v float64) bool { return v <= lim.CorrelMax }))
+	av.EVEbitda = criterio("EV/EBITDA", m12.Valores["ev_ebitda"], "x", func(float64) bool { return true }).Valor
 	return av
 }
 
