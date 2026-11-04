@@ -23,7 +23,8 @@
   --alerta-fundo: #3a2c12; --alerta-texto: #ffc870; --linha-par: #1f262f; --sombra: none;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--fundo); color: var(--texto); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+html { background: var(--fundo); }
+body { margin: 0; min-height: 100vh; background: var(--fundo); color: var(--texto); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 header { position: sticky; top: 0; z-index: 5; background: var(--painel); border-bottom: 1px solid var(--borda); }
 .topo { max-width: 1200px; margin: 0 auto; padding: 12px 16px 0; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .topo h1 { font-size: 20px; margin: 0; flex: 1; }
@@ -77,6 +78,8 @@ td.clicavel:hover { outline: 1px solid var(--destaque); outline-offset: -1px; }
 td.sem { color: var(--suave); }
 .ok { color: var(--ganho); font-weight: 600; } .nok { color: var(--perda); }
 .nota-radar { font-weight: 650; }
+th.ordenavel { cursor: pointer; user-select: none; }
+th.ordenavel:hover, th.ordenada { color: var(--texto); }
 .legenda { color: var(--suave); font-size: 13px; margin-top: 8px; }
 /* painel lateral da memória de cálculo */
 #painel { position: fixed; top: 0; right: 0; height: 100%; width: min(460px, 100%); background: var(--painel); border-left: 1px solid var(--borda); box-shadow: -4px 0 20px rgba(0,0,0,.15); transform: translateX(100%); transition: transform .2s; z-index: 20; overflow-y: auto; padding: 18px; }
@@ -213,16 +216,36 @@ async function abaProventos() {
     $("#conteudo").innerHTML = `<section class="bloco"><p>Nenhum provento recebido. Eles vêm do extrato da B3.</p></section>`;
     return;
   }
-  let h = `<div class="cards"><div class="card"><div class="rotulo">Total recebido</div><div class="valor">R$ ${esc(d.total)}</div><div class="sub">${d.pagamentos} pagamentos</div></div>
-    ${d.tipos.map((t) => `<div class="card"><div class="rotulo">${esc(t.nome)}</div><div class="valor">R$ ${esc(t.valor)}</div></div>`).join("")}</div>`;
-  h += `<section class="bloco"><h2>Por mês <small>R$, líquido</small></h2><div class="rolagem"><table><thead><tr><th>Ano</th>${MESES.map((m) => `<th>${m}</th>`).join("")}<th>Total</th></tr></thead><tbody>
-    ${d.anos.map((a) => `<tr><td>${a.ano}</td>${a.meses.map((m) => `<td class="${m === "-" ? "sem" : ""}">${esc(m)}</td>`).join("")}<td><b>${esc(a.total)}</b></td></tr>`).join("")}
+  const primeiro = d.anos.length ? d.anos[0].ano : "";
+  let h = `<div class="cards"><div class="card"><div class="rotulo">Você já recebeu (desde ${primeiro})</div><div class="valor">R$ ${esc(d.total)}</div><div class="sub">${d.pagamentos} créditos na conta</div></div>
+    ${d.tipos.map((t) => `<div class="card"><div class="rotulo">Em ${esc(t.nome.toLowerCase())}</div><div class="valor">R$ ${esc(t.valor)}</div></div>`).join("")}</div>`;
+  const tabelaAtivos = (lista) => `<div class="rolagem"><table><thead><tr><th>Ativo</th><th>Recebido (R$)</th><th>% do total</th><th>Nº de pagamentos</th><th>Último pagamento</th></tr></thead><tbody>
+    ${lista.map((a) => `<tr><td>${esc(a.ticker)}</td><td>${esc(a.total)}</td><td>${esc(a.pct)}</td><td>${a.pagamentos}</td><td>${esc(a.ultimo)}</td></tr>`).join("")}</tbody></table></div>`;
+  const atuais = d.ativos.filter((a) => a.naCarteira), vendidos = d.ativos.filter((a) => !a.naCarteira);
+  if (atuais.length) {
+    h += `<section class="bloco"><h2>Dos ativos que você tem hoje <small>quanto cada um já pagou a você</small></h2>${tabelaAtivos(atuais)}</section>`;
+  }
+  h += `<section class="bloco"><h2>Quanto caiu na sua conta em cada mês <small>R$, soma de todos os ativos, já sem o IR</small></h2>
+    <p class="legenda" style="margin-top:0">Não é valor por ação: é o dinheiro que você recebeu. Clique num mês para ver de quais ativos veio.</p>
+    <div class="rolagem"><table id="tabela-meses"><thead><tr><th>Ano</th>${MESES.map((m) => `<th>${m}</th>`).join("")}<th>Total do ano</th></tr></thead><tbody>
+    ${d.anos.map((a) => `<tr><td>${a.ano}</td>${a.meses.map((m, im) => m === "-" ? `<td class="sem">-</td>` : `<td class="clicavel" data-ano="${a.ano}" data-mes="${im + 1}" title="Ver os pagamentos">${esc(m)}</td>`).join("")}<td><b>${esc(a.total)}</b></td></tr>`).join("")}
     </tbody></table></div></section>`;
-  h += `<section class="bloco"><h2>Por ativo</h2><div class="rolagem"><table><thead><tr><th>Ativo</th><th>Total</th><th>%</th><th>Pagamentos</th><th>Último</th></tr></thead><tbody>
-    ${d.ativos.map((a) => `<tr><td>${esc(a.ticker)}${a.naCarteira ? "" : ` <span class="legenda">(vendido)</span>`}</td><td>${esc(a.total)}</td><td>${esc(a.pct)}</td><td>${a.pagamentos}</td><td>${esc(a.ultimo)}</td></tr>`).join("")}
-    <tr class="total"><td>Total</td><td>${esc(d.total)}</td><td></td><td>${d.pagamentos}</td><td></td></tr></tbody></table></div>
-    <p class="legenda">Valores líquidos, como creditados (o JCP já vem com 15% de IR descontado). Fonte: extrato de Movimentação da B3.</p></section>`;
+  if (vendidos.length) {
+    h += `<section class="bloco"><details><summary style="cursor:pointer"><b>Ativos que você já vendeu</b> <span class="legenda">(${vendidos.length}, clique para ver)</span></summary><div style="margin-top:10px">${tabelaAtivos(vendidos)}</div></details></section>`;
+  }
+  h += `<p class="legenda">Valores líquidos, como creditados (o JCP já vem com 15% de IR descontado). Fonte: extrato de Movimentação da B3.</p>`;
   $("#conteudo").innerHTML = h;
+  $("#tabela-meses").onclick = (ev) => {
+    const td = ev.target.closest("td[data-mes]");
+    if (!td) return;
+    const ano = Number(td.dataset.ano), mes = Number(td.dataset.mes);
+    const itens = d.lista.filter((p) => p.ano === ano && p.mes === mes);
+    $("#painel-corpo").innerHTML = `<h3>Recebido em ${MESES[mes - 1]}/${ano}</h3><p style="font-size:24px;font-weight:650;margin:10px 0">R$ ${esc(td.textContent)}</p>
+      <table><tbody>${itens.map((p) => `<tr><td>${esc(p.ticker)}<div class="origem">${esc(p.tipo)} · ${esc(p.data)}</div></td><td class="num">R$ ${esc(p.valor)}</td></tr>`).join("")}</tbody></table>
+      <p class="legenda">Valor que caiu na conta (o JCP já com 15% de IR descontado).</p>`;
+    $("#painel").classList.add("aberto");
+    $("#painel").setAttribute("aria-hidden", "false");
+  };
 }
 
 // ---------- Agenda ----------
@@ -309,6 +332,37 @@ $("#painel .fechar").onclick = fecharPainel;
 
 // ---------- Radar ----------
 let radarTodas = false, radarBusca = "";
+// Ordenação do radar: coluna "nota" (padrão do servidor), "ativo" ou o índice do critério.
+let radarOrdem = { col: "nota", cresce: false };
+
+// numeroBR lê "11,6%", "5 anos", "1.234,5"; sem número (n/a, -) devolve null.
+function numeroBR(txt) {
+  const m = String(txt).replace(/\./g, "").replace(",", ".").match(/-?\d+(\.\d+)?/);
+  return m ? Number(m[0]) : null;
+}
+function chaveRadar(i, col) {
+  if (col === "ativo") return i.ticker;
+  if (col === "nota") return i.total ? i.cumpridos / i.total : 0;
+  const c = i.criterios[col];
+  return c && !c.naoAplica ? numeroBR(c.valor) : null;
+}
+function ordenarRadar(itens) {
+  const { col, cresce } = radarOrdem;
+  if (col === "nota" && !cresce) return itens; // o servidor já manda na ordem da nota (e P/L no empate)
+  return [...itens].sort((x, y) => {
+    const a = chaveRadar(x, col), b = chaveRadar(y, col);
+    if (a === null && b === null) return 0;
+    if (a === null) return 1; // sem valor sempre no fim
+    if (b === null) return -1;
+    const r = typeof a === "string" ? a.localeCompare(b) : a - b;
+    return cresce ? r : -r;
+  });
+}
+function cabecalhoRadar(rotulo, col, alinhar) {
+  const ativa = radarOrdem.col === col;
+  const seta = ativa ? (radarOrdem.cresce ? " ▲" : " ▼") : "";
+  return `<th class="ordenavel${ativa ? " ordenada" : ""}" data-col="${col}"${alinhar ? ` style="text-align:${alinhar}"` : ""} title="Ordenar">${esc(rotulo)}${seta}</th>`;
+}
 async function abaRadar() {
   if (!cache.radar) {
     $("#conteudo").innerHTML = `<section class="bloco"><h2>Radar</h2><p>Avalia todas as ações da B3 com liquidez pelo seu filtro. Na primeira vez baixa os eventos de cada empresa no site da B3 e pode levar vários minutos.</p><button class="principal" id="rodar-radar">Calcular o radar</button></section>`;
@@ -321,13 +375,13 @@ async function abaRadar() {
   }
   const d = cache.radar;
   const busca = radarBusca.toUpperCase();
-  let itens = d.itens.filter((i) => !busca || i.ticker.includes(busca) || (i.nome || "").toUpperCase().includes(busca));
+  let itens = ordenarRadar(d.itens.filter((i) => !busca || i.ticker.includes(busca) || (i.nome || "").toUpperCase().includes(busca)));
   const total = itens.length;
   if (!radarTodas && !busca) itens = itens.slice(0, 30);
   let h = `<div class="linha-form"><input type="text" id="busca-radar" placeholder="Procurar ativo ou empresa" value="${esc(radarBusca)}">
     <button id="radar-todas">${radarTodas ? "Só as 30 melhores" : "Ver todas (" + d.itens.length + ")"}</button><button id="radar-atualizar">Calcular de novo</button></div>`;
   h += `<section class="bloco"><h2>Radar <small>${esc(d.data)} · ${d.analisadas} empresas · ${d.semLiquidez} códigos sem liquidez ficaram fora · preços até ${esc(d.precosAte)}</small></h2>
-    <div class="rolagem"><table><thead><tr><th>Ativo</th><th>Nota</th>${d.criterios.map((c) => `<th>${esc(c)}</th>`).join("")}<th style="text-align:left">Obs.</th></tr></thead><tbody>`;
+    <div class="rolagem"><table id="tabela-radar"><thead><tr>${cabecalhoRadar("Ativo", "ativo", "left")}${cabecalhoRadar("Nota", "nota")}${d.criterios.map((c, ic) => cabecalhoRadar(c, ic)).join("")}<th style="text-align:left">Obs.</th></tr></thead><tbody>`;
   for (const i of itens) {
     h += `<tr><td title="${esc(i.nome)}">${esc(i.ticker)}${i.naCarteira ? ` <span class="etiqueta">na carteira</span>` : ""}</td><td class="nota-radar">${i.cumpridos}/${i.total}</td>
       ${i.criterios.map((c) => `<td class="${c.naoAplica ? "sem" : c.ok ? "ok" : "nok"}">${esc(c.valor)} ${c.naoAplica ? "" : c.ok ? "✓" : "✗"}</td>`).join("")}<td style="text-align:left">${esc(i.obs)}</td></tr>`;
@@ -337,6 +391,15 @@ async function abaRadar() {
   const b = $("#busca-radar");
   b.oninput = () => { radarBusca = b.value; abaRadar(); const nb = $("#busca-radar"); nb.focus(); nb.setSelectionRange(nb.value.length, nb.value.length); };
   $("#radar-todas").onclick = () => { radarTodas = !radarTodas; abaRadar(); };
+  $("#tabela-radar thead").onclick = (ev) => {
+    const th = ev.target.closest("th[data-col]");
+    if (!th) return;
+    const col = /^\d+$/.test(th.dataset.col) ? Number(th.dataset.col) : th.dataset.col;
+    // 1º clique: do maior para o menor (nota, ROE…), exceto ativo, P/L, beta e correlação, em que menor é melhor.
+    const menorPrimeiro = col === "ativo" || (typeof col === "number" && /P\/L|beta|correl/i.test(d.criterios[col]));
+    radarOrdem = radarOrdem.col === col ? { col, cresce: !radarOrdem.cresce } : { col, cresce: menorPrimeiro };
+    abaRadar();
+  };
   $("#radar-atualizar").onclick = () => { delete cache.radar; abaRadar(); $("#rodar-radar").click(); };
 }
 

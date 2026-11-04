@@ -155,6 +155,17 @@ type dadosProventos struct {
 	Tipos      []itemValor      `json:"tipos"`
 	Total      string           `json:"total"`
 	Pagamentos int              `json:"pagamentos"`
+	Lista      []pagamento      `json:"lista"` // cada crédito, para o detalhe do mês na tela
+}
+
+// pagamento é um provento creditado na conta.
+type pagamento struct {
+	Ano    int    `json:"ano"`
+	Mes    int    `json:"mes"` // 1 a 12
+	Data   string `json:"data"`
+	Ticker string `json:"ticker"`
+	Tipo   string `json:"tipo"`
+	Valor  string `json:"valor"`
 }
 
 func (a *app) proventos(args []string) error {
@@ -251,6 +262,8 @@ func (a *app) dadosProventos(ano int) (dadosProventos, error) {
 			ultimo[p.Ticker] = p.Data
 		}
 		porTipo[p.Tipo] += p.Valor
+		d.Lista = append(d.Lista, pagamento{Ano: p.Data.Year(), Mes: int(p.Data.Month()), Data: formato.Data(p.Data),
+			Ticker: p.Ticker, Tipo: p.Tipo, Valor: formato.Moeda(p.Valor)})
 		total += p.Valor
 	}
 
