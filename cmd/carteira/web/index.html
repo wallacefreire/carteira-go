@@ -81,6 +81,8 @@ td.sem { color: var(--suave); }
 th.ordenavel { cursor: pointer; user-select: none; }
 th.ordenavel:hover, th.ordenada { color: var(--texto); }
 .legenda { color: var(--suave); font-size: 13px; margin-top: 8px; }
+tr.subitem td { color: var(--suave); font-size: 13px; }
+tr.subitem td:first-child { padding-left: 28px; }
 /* painel lateral da memória de cálculo */
 #painel { position: fixed; top: 0; right: 0; height: 100%; width: min(460px, 100%); background: var(--painel); border-left: 1px solid var(--borda); box-shadow: -4px 0 20px rgba(0,0,0,.15); transform: translateX(100%); transition: transform .2s; z-index: 20; overflow-y: auto; padding: 18px; }
 #painel.aberto { transform: none; }
@@ -193,7 +195,8 @@ async function abaCarteira() {
   h += `<tr class="total"><td>Total</td><td></td><td></td><td></td><td>${esc(d.total)}</td><td class="${cor(d.resultadoTotalNum)}">${esc(d.resultadoTotal)}</td><td class="${cor(d.resultadoTotalNum)}">${esc(d.resultadoTotalPct)}</td><td></td></tr></tbody></table></div>`;
   h += lista("Cotações", d.notas) + lista("Confira", d.avisos) + `</section>`;
   if (d.classes && d.classes.length) {
-    h += `<section class="bloco"><h2>Por classe</h2><table><tbody>${d.classes.map((c) => `<tr><td>${esc(c.nome)}</td><td>${esc(c.valor)}</td><td>${esc(c.pct)}</td></tr>`).join("")}</tbody></table></section>`;
+    h += `<section class="bloco"><h2>Por classe</h2><table><tbody>${d.classes.map((c) => `<tr><td>${esc(c.nome)}</td><td>${esc(c.valor)}</td><td>${esc(c.pct)}</td></tr>` +
+      (c.itens || []).map((i) => `<tr class="subitem"><td>${esc(i.nome)}</td><td>${esc(i.valor)}</td><td>${esc(i.pct)}</td></tr>`).join("")).join("")}</tbody></table></section>`;
   }
   if (d.terceiros && d.terceiros.length) {
     h += `<section class="bloco"><h2>De terceiros <small>fora do total, dos pesos e da correlação</small></h2><table><tbody>

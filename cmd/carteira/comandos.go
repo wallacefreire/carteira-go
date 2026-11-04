@@ -65,6 +65,9 @@ type itemValor struct {
 	Qtd   string `json:"qtd,omitempty"`
 	Valor string `json:"valor"`
 	Pct   string `json:"pct,omitempty"`
+	// Itens detalha a classe (ex.: cada título do Tesouro); ações não, porque
+	// já aparecem na tabela da posição.
+	Itens []itemValor `json:"itens,omitempty"`
 }
 
 // dadosPosicao é tudo o que a posição mostra, no terminal ou na tela web.
@@ -224,6 +227,9 @@ func (a *app) posicao(ctx context.Context) error {
 		tw = tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', tabwriter.AlignRight)
 		for _, c := range d.Classes {
 			fmt.Fprintf(tw, "  %s\t%s\t%s\t\n", c.Nome, c.Valor, c.Pct)
+			for _, it := range c.Itens {
+				fmt.Fprintf(tw, "  · %s\t%s\t%s\t\n", it.Nome, it.Valor, it.Pct)
+			}
 		}
 		if err := tw.Flush(); err != nil {
 			return err

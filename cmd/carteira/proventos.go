@@ -114,16 +114,27 @@ func (a *app) classes(linhas []carteira.Linha, total float64) []itemValor {
 		return nil
 	}
 	soma := map[string]float64{}
+	ativos := map[string][]carteira.Linha{}
 	for _, l := range linhas {
 		if l.Cotacao > 0 {
-			soma[a.classe(l.Ticker)] += l.Valor
+			c := a.classe(l.Ticker)
+			soma[c] += l.Valor
+			ativos[c] = append(ativos[c], l)
 		}
 	}
 	nomes := slices.Collect(maps.Keys(soma))
 	slices.SortFunc(nomes, func(x, y string) int { return cmp.Compare(soma[y], soma[x]) })
 	var l []itemValor
 	for _, c := range nomes {
-		l = append(l, itemValor{Nome: c, Valor: formato.Moeda(soma[c]), Pct: formato.Pct(soma[c] / total)})
+		it := itemValor{Nome: c, Valor: formato.Moeda(soma[c]), Pct: formato.Pct(soma[c] / total)}
+		if c != "Ações" {
+			doClasse := ativos[c]
+			slices.SortFunc(doClasse, func(x, y carteira.Linha) int { return cmp.Compare(y.Valor, x.Valor) })
+			for _, at := range doClasse {
+				it.Itens = append(it.Itens, itemValor{Nome: at.Ticker, Valor: formato.Moeda(at.Valor), Pct: formato.Pct(at.Valor / total)})
+			}
+		}
+		l = append(l, it)
 	}
 	return l
 }
