@@ -22,7 +22,38 @@
   --destaque: #5b9bff; --destaque-texto: #0d1117; --ganho: #3fbf7f; --perda: #ff7a6b;
   --alerta-fundo: #3a2c12; --alerta-texto: #ffc870; --linha-par: #1f262f; --sombra: none;
 }
+/* Cores das fatias do gráfico: ordem fixa (validada para daltonismo), cada ativo sempre com a mesma. */
+:root {
+  --serie-1: #2a78d6; --serie-2: #eb6834; --serie-3: #1baf7a; --serie-4: #eda100;
+  --serie-5: #e87ba4; --serie-6: #008300; --serie-7: #6250d6; --serie-8: #e34948; --serie-outros: #9aa1ab;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="claro"]) {
+    --serie-1: #3987e5; --serie-2: #d95926; --serie-3: #199e70; --serie-4: #c98500;
+    --serie-5: #d55181; --serie-6: #008300; --serie-7: #9085e9; --serie-8: #e66767; --serie-outros: #6b7480;
+  }
+}
+:root[data-tema="escuro"] {
+  --serie-1: #3987e5; --serie-2: #d95926; --serie-3: #199e70; --serie-4: #c98500;
+  --serie-5: #d55181; --serie-6: #008300; --serie-7: #9085e9; --serie-8: #e66767; --serie-outros: #6b7480;
+}
 * { box-sizing: border-box; }
+/* gráfico de rosca da carteira */
+.grafico { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; }
+.grafico svg { flex: none; width: 220px; height: 220px; }
+.grafico path { stroke: var(--painel); stroke-width: 2; cursor: default; transition: opacity .15s; }
+.grafico.foco path:not(.ativa) { opacity: .35; }
+.grafico .centro-valor { font-size: 17px; font-weight: 650; fill: var(--texto); }
+.grafico .centro-rotulo { font-size: 12px; fill: var(--suave); }
+.legenda-grafico { flex: 1; min-width: 220px; max-width: 460px; margin: 0; padding: 0; list-style: none; }
+.legenda-grafico li { display: grid; grid-template-columns: 12px 1fr auto 56px; gap: 10px; align-items: center; padding: 5px 6px; border-radius: 6px; }
+.legenda-grafico li.ativa { background: var(--linha-par); }
+.legenda-grafico i { width: 12px; height: 12px; border-radius: 3px; }
+.legenda-grafico span:nth-child(3), .legenda-grafico span:nth-child(4) { text-align: right; font-variant-numeric: tabular-nums; }
+.legenda-grafico span:nth-child(4) { color: var(--suave); }
+.visoes { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.visoes button[aria-pressed="true"] { background: var(--destaque); color: var(--destaque-texto); border-color: var(--destaque); }
+.dica { position: fixed; z-index: 30; pointer-events: none; background: var(--painel); color: var(--texto); border: 1px solid var(--borda); border-radius: 8px; padding: 6px 10px; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
 html { background: var(--fundo); }
 body { margin: 0; min-height: 100vh; background: var(--fundo); color: var(--texto); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 header { position: sticky; top: 0; z-index: 5; background: var(--painel); border-bottom: 1px solid var(--borda); }
@@ -211,6 +242,7 @@ async function abaCarteira() {
   }
   h += `<tr class="total"><td>Total</td><td></td><td></td><td></td><td>${esc(d.total)}</td><td class="${cor(d.resultadoTotalNum)}">${esc(d.resultadoTotal)}</td><td class="${cor(d.resultadoTotalNum)}">${esc(d.resultadoTotalPct)}</td><td></td></tr></tbody></table></div>`;
   h += lista("Cotações", d.notas) + lista("Confira", d.avisos) + `</section>`;
+  h += `<section class="bloco" id="bloco-grafico"></section>`;
   if (d.classes && d.classes.length) {
     h += `<section class="bloco"><h2>Por classe</h2><table><tbody>${d.classes.map((c) => `<tr><td>${esc(c.nome)}</td><td>${esc(c.valor)}</td><td>${esc(c.pct)}</td></tr>` +
       (c.itens || []).map((i) => `<tr class="subitem"><td>${esc(i.nome)}</td><td>${esc(i.valor)}</td><td>${esc(i.pct)}</td></tr>`).join("")).join("")}</tbody></table></section>`;
@@ -221,6 +253,90 @@ async function abaCarteira() {
       ${d.totalTerceiros ? `<tr class="total"><td>Total</td><td></td><td>${esc(d.totalTerceiros)}</td></tr>` : ""}</tbody></table></section>`;
   }
   $("#conteudo").innerHTML = h;
+  desenharGrafico(d);
+}
+
+// ---------- Gráfico de rosca da carteira ----------
+const VISOES = [["geral", "Geral"], ["Renda variável", "Renda variável"], ["Renda fixa", "Renda fixa"]];
+let visaoGrafico = "geral";
+const moedaBR = (v) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pctBR = (f) => (f * 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "%";
+
+// Fatia da rosca entre os ângulos a0 e a1 (radianos, 0 = topo, sentido horário).
+function fatia(a0, a1, r, ri) {
+  const p = (ang, raio) => [110 + raio * Math.sin(ang), 110 - raio * Math.cos(ang)];
+  if (a1 - a0 >= 2 * Math.PI - 1e-6) a1 = a0 + 2 * Math.PI - 1e-4; // fatia única: quase o círculo todo
+  const g = a1 - a0 > Math.PI ? 1 : 0;
+  const [x0, y0] = p(a0, r), [x1, y1] = p(a1, r), [x2, y2] = p(a1, ri), [x3, y3] = p(a0, ri);
+  return `M${x0},${y0} A${r},${r} 0 ${g} 1 ${x1},${y1} L${x2},${y2} A${ri},${ri} 0 ${g} 0 ${x3},${y3} Z`;
+}
+
+function desenharGrafico(d) {
+  const bloco = $("#bloco-grafico");
+  if (!bloco) return;
+  // Cor de cada ativo pela posição no total (maior primeiro): fixa nas três visões.
+  // Mais de 8 ativos: os 7 maiores têm cor própria e o resto vira "Outros".
+  const todos = d.linhas.filter((l) => l.valorNum > 0).sort((a, b) => b.valorNum - a.valorNum);
+  const comCor = todos.length > 8 ? 7 : 8;
+  const corDe = new Map(todos.map((l, i) => [l.ticker, i < comCor ? `var(--serie-${i + 1})` : "var(--serie-outros)"]));
+  const totalGeral = todos.reduce((s, l) => s + l.valorNum, 0);
+
+  const doGrupo = visaoGrafico === "geral" ? todos : todos.filter((l) => l.grupo === visaoGrafico);
+  const fatias = [];
+  let outros = 0;
+  for (const l of doGrupo) {
+    if (corDe.get(l.ticker) === "var(--serie-outros)") outros += l.valorNum;
+    else fatias.push({ nome: l.ticker, valor: l.valorNum, cor: corDe.get(l.ticker) });
+  }
+  if (outros > 0) fatias.push({ nome: "Outros", valor: outros, cor: "var(--serie-outros)" });
+  const total = fatias.reduce((s, f) => s + f.valor, 0);
+
+  const somaGrupo = (g) => todos.filter((l) => l.grupo === g).reduce((s, l) => s + l.valorNum, 0);
+  let h = `<h2>Distribuição <small>${visaoGrafico === "geral" ? `renda variável ${pctBR(somaGrupo("Renda variável") / totalGeral)} · renda fixa ${pctBR(somaGrupo("Renda fixa") / totalGeral)}` : "parte da carteira"}</small></h2>
+    <div class="visoes" role="group" aria-label="O que mostrar">${VISOES.map(([v, rot]) => `<button data-visao="${esc(v)}" aria-pressed="${visaoGrafico === v}">${esc(rot)}</button>`).join("")}</div>`;
+  if (!total) {
+    bloco.innerHTML = h + `<p class="legenda">Nenhum ativo de ${esc(visaoGrafico.toLowerCase())} na carteira.</p>`;
+    ligarVisoes(d);
+    return;
+  }
+  let ang = 0, svg = "";
+  fatias.forEach((f, i) => {
+    const a1 = ang + (f.valor / total) * 2 * Math.PI;
+    svg += `<path d="${fatia(ang, a1, 104, 66)}" fill="${f.cor}" data-i="${i}"></path>`;
+    ang = a1;
+  });
+  const rotuloCentro = visaoGrafico === "geral" ? "total" : `${pctBR(total / totalGeral)} da carteira`;
+  h += `<div class="grafico" id="grafico">
+    <svg viewBox="0 0 220 220" role="img" aria-label="Distribuição da carteira: ${esc(fatias.map((f) => `${f.nome} ${pctBR(f.valor / total)}`).join(", "))}">${svg}
+      <text x="110" y="108" text-anchor="middle" class="centro-valor">R$ ${moedaBR(total)}</text>
+      <text x="110" y="128" text-anchor="middle" class="centro-rotulo">${esc(rotuloCentro)}</text></svg>
+    <ul class="legenda-grafico">${fatias.map((f, i) => `<li data-i="${i}"><i style="background:${f.cor}"></i><span>${esc(f.nome)}</span><span>${moedaBR(f.valor)}</span><span>${pctBR(f.valor / total)}</span></li>`).join("")}</ul>
+  </div>`;
+  bloco.innerHTML = h;
+  ligarVisoes(d);
+
+  // Passar o mouse numa fatia ou na legenda destaca as duas e mostra o valor.
+  const g = $("#grafico");
+  let dica = document.querySelector(".dica");
+  if (!dica) { dica = document.createElement("div"); dica.className = "dica"; dica.hidden = true; document.body.appendChild(dica); }
+  const focar = (i, ev) => {
+    g.classList.toggle("foco", i !== null);
+    g.querySelectorAll("[data-i]").forEach((el) => el.classList.toggle("ativa", el.dataset.i === String(i)));
+    if (i === null || !ev || ev.target.tagName !== "path") { dica.hidden = true; return; }
+    const f = fatias[i];
+    dica.textContent = `${f.nome} · R$ ${moedaBR(f.valor)} · ${pctBR(f.valor / total)}`;
+    dica.hidden = false;
+    dica.style.left = ev.clientX + 14 + "px";
+    dica.style.top = ev.clientY + 14 + "px";
+  };
+  g.addEventListener("mousemove", (ev) => { const el = ev.target.closest("[data-i]"); focar(el ? Number(el.dataset.i) : null, ev); });
+  g.addEventListener("mouseleave", () => focar(null));
+}
+
+function ligarVisoes(d) {
+  document.querySelectorAll("#bloco-grafico [data-visao]").forEach((b) => {
+    b.onclick = () => { visaoGrafico = b.dataset.visao; document.querySelector(".dica")?.setAttribute("hidden", ""); desenharGrafico(d); };
+  });
 }
 
 // ---------- Proventos ----------

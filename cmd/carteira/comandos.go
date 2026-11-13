@@ -57,6 +57,8 @@ type linhaPosicao struct {
 	PesoNum      float64 `json:"pesoNum"`      // fração, para a barra de peso na tela
 	ResultadoNum float64 `json:"resultadoNum"` // para a cor (ganho ou perda)
 	AcimaTeto    bool    `json:"acimaTeto"`
+	ValorNum     float64 `json:"valorNum"` // para o gráfico (zero sem cotação)
+	Grupo        string  `json:"grupo"`    // "Renda fixa" ou "Renda variável"
 }
 
 // itemValor é um nome com valor (classe, tipo de provento, ativo de terceiros).
@@ -146,7 +148,12 @@ func (a *app) dadosPosicao(ctx context.Context) (dadosPosicao, error) {
 	for _, l := range linhas {
 		lp := linhaPosicao{Ticker: l.Ticker, Qtd: formato.Quantidade(l.Quantidade), PrecoMedio: formato.Moeda(l.PrecoMedio()),
 			Cotacao: "-", Valor: "-", Resultado: "-", ResultadoPct: "-", Peso: "-"}
+		lp.Grupo = "Renda variável"
+		if a.classe(l.Ticker) == "Tesouro Direto" {
+			lp.Grupo = "Renda fixa"
+		}
 		if l.Cotacao > 0 {
+			lp.ValorNum = l.Valor
 			custoCotado += l.Custo
 			lp.Cotacao = formato.Moeda(l.Cotacao)
 			lp.Valor = formato.Moeda(l.Valor)
