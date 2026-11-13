@@ -68,7 +68,11 @@ tr.total td { font-weight: 650; border-bottom: none; }
 ul.notas { margin: 6px 0 0; padding-left: 18px; color: var(--suave); font-size: 13px; }
 .aviso-topo { background: var(--alerta-fundo); color: var(--alerta-texto); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .aviso-topo span { flex: 1; }
-.carregando { color: var(--suave); padding: 24px 0; }
+.carregando { color: var(--suave); padding: 28px 0; display: flex; gap: 14px; align-items: center; }
+.carregando p { margin: 0 0 2px; color: var(--texto); }
+.giro { width: 26px; height: 26px; flex: none; border-radius: 50%; border: 3px solid var(--borda); border-top-color: var(--destaque); animation: girar .8s linear infinite; }
+@keyframes girar { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .giro { animation-duration: 3s; } }
 .erro { color: var(--perda); padding: 12px 0; white-space: pre-wrap; }
 .linha-form { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
 input[type=text], select { font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--borda); background: var(--painel); color: var(--texto); }
@@ -138,14 +142,27 @@ const cache = {};
 let abaAtual = "carteira";
 
 async function api(caminho, opcoes) {
-  const r = await fetch(caminho, opcoes);
+  let r;
+  try { r = await fetch(caminho, opcoes); } catch {
+    throw new Error("sem conexão com o programa. Confira se o carteira.exe web está aberto e recarregue a página.");
+  }
   let dados;
   try { dados = await r.json(); } catch { throw new Error(`resposta inesperada do servidor (HTTP ${r.status})`); }
   if (!r.ok) throw new Error(dados.erro || `HTTP ${r.status}`);
   return dados;
 }
 
-function carregando(msg) { $("#conteudo").innerHTML = `<p class="carregando">${esc(msg)}</p>`; }
+// htmlCarregando: animação + mensagem + segundos passados (atualizados pelo relógio abaixo).
+function htmlCarregando(msg) {
+  return `<div class="carregando"><span class="giro"></span><div><p>${esc(msg)}</p><small data-inicio="${Date.now()}">0 s</small></div></div>`;
+}
+function carregando(msg) { $("#conteudo").innerHTML = htmlCarregando(msg); }
+setInterval(() => {
+  document.querySelectorAll(".carregando [data-inicio]").forEach((el) => {
+    const s = Math.floor((Date.now() - Number(el.dataset.inicio)) / 1000);
+    el.textContent = s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
+  });
+}, 1000);
 function erro(e) { $("#conteudo").innerHTML = `<p class="erro">Erro: ${esc(e.message)}</p>`; }
 
 // ---------- abas ----------
@@ -279,7 +296,7 @@ async function abaIndicadores() {
   const chave = "indicadores:" + ativosIndicadores;
   const form = `<form class="linha-form" id="form-ind"><input type="text" id="ativos" placeholder="Outros ativos, ex.: GRND3 PETR4 (vazio = carteira e observação)" value="${esc(ativosIndicadores)}"><button class="principal">Ver</button></form>`;
   if (!cache[chave]) {
-    $("#conteudo").innerHTML = form + `<p class="carregando">Calculando os indicadores (na primeira vez baixa os balanços da CVM e os preços da B3: pode levar alguns minutos)…</p>`;
+    $("#conteudo").innerHTML = form + htmlCarregando("Calculando os indicadores… (se os balanços da CVM ou os preços da B3 estiverem velhos, baixa de novo: pode levar alguns minutos)");
     ligarFormIndicadores();
     try {
       cache[chave] = await api("/api/indicadores?ativos=" + encodeURIComponent(ativosIndicadores));
@@ -437,7 +454,7 @@ $("#arquivo").onchange = async () => {
   if (!arq) return;
   const fd = new FormData();
   fd.append("extrato", arq);
-  abrirModal(`<h3>Importando…</h3><p class="carregando">${esc(arq.name)}</p>`);
+  abrirModal(`<h3>Importando…</h3>${htmlCarregando(arq.name)}`);
   $("#botao-importar").disabled = true;
   try {
     const r = await api("/api/importar", { method: "POST", body: fd });
