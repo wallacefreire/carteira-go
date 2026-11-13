@@ -268,3 +268,15 @@ func TestLucroSemDescontinuadas(t *testing.T) {
 		t.Error("2025 sem descontinuadas devia ser igual ao lucro")
 	}
 }
+
+func TestZeroNaoGanhaDeOutraFonte(t *testing.T) {
+	// 2021 reapresentado no DFP 2022 com o consolidado zerado (a empresa ainda
+	// não consolidava); o DFP 2021 só tem o individual.
+	c := calc{contas: []cvm.Conta{
+		fluxo("lucro_controladora", true, "2022-12-31", "2021-01-01", "2021-12-31", 0),
+		fluxo("lucro", false, "2021-12-31", "2021-01-01", "2021-12-31", 127.8),
+	}}
+	if v, _, ok := c.lucro(d("2021-01-01"), d("2021-12-31")); !ok || v != 127.8 {
+		t.Errorf("lucro 2021 = %v (%v), quer 127,8 do individual", v, ok)
+	}
+}

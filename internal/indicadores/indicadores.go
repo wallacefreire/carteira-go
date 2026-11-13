@@ -106,6 +106,7 @@ type Resultado struct {
 	Avisos             []string
 	PrejuizoTrimestral []string   // trimestres com prejuízo nos 2 últimos anos e neste ano (ex.: "2T25")
 	LucrosAnuais       []LucroAno // até 10 anos, do mais antigo ao mais novo (critério do radar)
+	Trimestres         []Coluna   // últimos trimestres (ListaTrimestral), do mais antigo ao mais novo
 }
 
 // LucroAno é o lucro dos acionistas num exercício (OK=false: sem a conta).
@@ -185,6 +186,7 @@ func Calcular(t cvm.Ticker, contas []cvm.Conta, comps []cvm.Composicao, cot Cota
 	r.Colunas = append(r.Colunas, col12)
 	r.Colunas = append(r.Colunas, media(colunasAnuais))
 	r.PrejuizoTrimestral = c.trimestresNegativos(anos)
+	r.Trimestres = c.trimestres(anos, r.Financeira)
 
 	// Venda ou fechamento de negócio pesando no lucro: o P/L engana.
 	if l, rec := col12.Valores["lucro"], col12.Valores["lucro_rec"]; l.OK && rec.OK && math.Abs(l.Numero-rec.Numero) > 0.2*math.Abs(l.Numero) {
@@ -253,11 +255,24 @@ func origem(x cvm.Conta) string {
 }
 
 // primeiro tenta as fontes em ordem (ex.: individual, depois consolidada).
+// Valor zero só vale se nenhuma fonte tiver outro: o ano anterior reapresentado
+// pode vir com o consolidado zerado quando a empresa ainda não consolidava
+// (SOJA3 em 2021), e aí vale o individual.
 func (c calc) primeiro(nome string, ini, fim time.Time, fontes ...fonte) (float64, Parte, bool) {
+	var zero *cvm.Conta
 	for _, f := range fontes {
 		if x, ok := c.achar(f.chave, f.consolidado, ini, fim); ok {
+			if x.Valor == 0 {
+				if zero == nil {
+					zero = &x
+				}
+				continue
+			}
 			return x.Valor, Parte{Nome: nome, Valor: x.Valor, Moeda: true, Origem: origem(x)}, true
 		}
+	}
+	if zero != nil {
+		return 0, Parte{Nome: nome, Moeda: true, Origem: origem(*zero)}, true
 	}
 	return 0, Parte{}, false
 }

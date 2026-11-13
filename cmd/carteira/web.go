@@ -203,6 +203,8 @@ type ativoIndicadores struct {
 	Financeira    bool             `json:"financeira"`
 	Colunas       []string         `json:"colunas"`
 	Linhas        []linhaIndicador `json:"linhas"`
+	Trimestres    []string         `json:"trimestres"` // rótulos (3T26…) da tabela por trimestre
+	LinhasTri     []linhaIndicador `json:"linhasTri"`
 	Avisos        []string         `json:"avisos"`
 }
 
@@ -238,25 +240,40 @@ func (a *app) dadosIndicadores(ctx context.Context, lista string) (dadosIndicado
 		for _, c := range r.Colunas {
 			at.Colunas = append(at.Colunas, c.Rotulo)
 		}
-		for _, def := range indicadores.Lista {
-			l := linhaIndicador{Chave: def.Chave, Nome: def.Nome, Unidade: def.Unidade, Formula: def.Formula, ComoLer: def.ComoLer, Fonte: fontes[def.Chave]}
-			for _, c := range r.Colunas {
-				v := c.Valores[def.Chave]
-				cel := celulaIndicador{Texto: formatarValor(v, def.Unidade), OK: v.OK, Motivo: v.Motivo, Periodo: c.Periodo, Nota: v.Nota}
-				if v.Periodo != "" {
-					cel.Periodo = v.Periodo
-				}
-				if v.OK {
-					cel.Longo = formatarValorLongo(v.Numero, def.Unidade)
-				}
-				for _, p := range v.Partes {
-					cel.Partes = append(cel.Partes, parteTexto{Nome: p.Nome, Valor: textoParte(p), Origem: p.Origem})
-				}
-				l.Celulas = append(l.Celulas, cel)
-			}
-			at.Linhas = append(at.Linhas, l)
+		at.Linhas = linhasIndicadores(indicadores.Lista, r.Colunas, fontes)
+		for _, c := range r.Trimestres {
+			at.Trimestres = append(at.Trimestres, c.Rotulo)
 		}
+		at.LinhasTri = linhasIndicadores(indicadores.ListaTrimestral, r.Trimestres, fontes)
 		d.Ativos = append(d.Ativos, at)
 	}
 	return d, nil
+}
+
+// linhasIndicadores monta uma linha por indicador, com a memória de cálculo de cada coluna.
+func linhasIndicadores(defs []indicadores.Def, colunas []indicadores.Coluna, fontes map[string]string) []linhaIndicador {
+	var linhas []linhaIndicador
+	for _, def := range defs {
+		fonte := fontes[def.Chave]
+		if fonte == "" {
+			fonte = fontes["lucro"] // linhas só da tabela por trimestre: CVM
+		}
+		l := linhaIndicador{Chave: def.Chave, Nome: def.Nome, Unidade: def.Unidade, Formula: def.Formula, ComoLer: def.ComoLer, Fonte: fonte}
+		for _, c := range colunas {
+			v := c.Valores[def.Chave]
+			cel := celulaIndicador{Texto: formatarValor(v, def.Unidade), OK: v.OK, Motivo: v.Motivo, Periodo: c.Periodo, Nota: v.Nota}
+			if v.Periodo != "" {
+				cel.Periodo = v.Periodo
+			}
+			if v.OK {
+				cel.Longo = formatarValorLongo(v.Numero, def.Unidade)
+			}
+			for _, p := range v.Partes {
+				cel.Partes = append(cel.Partes, parteTexto{Nome: p.Nome, Valor: textoParte(p), Origem: p.Origem})
+			}
+			l.Celulas = append(l.Celulas, cel)
+		}
+		linhas = append(linhas, l)
+	}
+	return linhas
 }

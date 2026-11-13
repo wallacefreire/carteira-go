@@ -238,6 +238,25 @@ func (a *app) imprimirIndicadores(r indicadores.Resultado) error {
 	if err := tw.Flush(); err != nil {
 		return err
 	}
+	if len(r.Trimestres) > 0 {
+		fmt.Fprintln(a.saida, "\nPor trimestre (R$ mi):")
+		tw = tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', tabwriter.AlignRight)
+		cab := []string{""}
+		for _, c := range r.Trimestres {
+			cab = append(cab, c.Rotulo)
+		}
+		fmt.Fprintln(tw, strings.Join(cab, "\t")+"\t")
+		for _, d := range indicadores.ListaTrimestral {
+			linha := []string{d.Nome}
+			for _, c := range r.Trimestres {
+				linha = append(linha, formatarValor(c.Valores[d.Chave], d.Unidade))
+			}
+			fmt.Fprintln(tw, strings.Join(linha, "\t")+"\t")
+		}
+		if err := tw.Flush(); err != nil {
+			return err
+		}
+	}
 	fmt.Fprintln(a.saida, "n/a = não se aplica a bancos e seguradoras · \"-\" = sem dado · beta, volatilidade e correlação usam preços da B3 ajustados por proventos")
 	imprimirLista(a.saida, "Avisos:", r.Avisos)
 	return nil

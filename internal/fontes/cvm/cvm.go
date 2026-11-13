@@ -233,14 +233,14 @@ func lerDemonstracao(f *zip.File, demonstracao string, consolidado bool) ([]Cont
 		if chave == "" {
 			continue
 		}
-		// ÚLTIMO = exercício do documento. PENÚLTIMO interessa no balanço
-		// patrimonial (saldo do fim do ano anterior, para médias) e nas
-		// operações descontinuadas: quando a empresa vende um negócio, o
-		// documento novo reclassifica o mesmo período do ano anterior, e o
+		// ÚLTIMO = exercício do documento; PENÚLTIMO = o mesmo período do ano
+		// anterior, reapresentado. No balanço patrimonial dá o saldo do fim do
+		// ano anterior (para médias). Na DRE e na DVA é o ano anterior na
+		// classificação nova: quando a empresa vende um negócio, o documento
 		// antigo ainda o tinha como operação normal (TOTVS e a Dimensa, 2026).
+		// Entre documentos, vale o mais novo (calc.achar).
 		ordem := campo("ORDEM_EXERC")
-		penultimoServe := saldo || chave == "lucro_descontinuadas"
-		if ordem != "ÚLTIMO" && !(penultimoServe && ordem == "PENÚLTIMO") {
+		if ordem != "ÚLTIMO" && ordem != "PENÚLTIMO" {
 			continue
 		}
 		valor, err := strconv.ParseFloat(campo("VL_CONTA"), 64)

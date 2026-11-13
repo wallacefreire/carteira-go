@@ -116,6 +116,8 @@ td.sem { color: var(--suave); }
 th.ordenavel { cursor: pointer; user-select: none; }
 th.ordenavel:hover, th.ordenada { color: var(--texto); }
 .legenda { color: var(--suave); font-size: 13px; margin-top: 8px; }
+h3.subtitulo { font-size: 15px; margin: 22px 0 8px; }
+h3.subtitulo small { color: var(--suave); font-weight: 400; font-size: 13px; }
 tr.subitem td { color: var(--suave); font-size: 13px; }
 tr.subitem td:first-child { padding-left: 28px; }
 /* painel lateral da memória de cálculo */
@@ -434,17 +436,26 @@ async function abaIndicadores() {
     at.linhas.forEach((l, il) => {
       h += `<tr><td>${esc(l.nome)}${l.unidade === "R$" ? " (R$ mi)" : ""}</td>${l.celulas.map((c, ic) => `<td class="clicavel ${c.ok ? "" : "sem"}" data-i="${ia},${il},${ic}" title="Ver a conta">${esc(c.texto)}</td>`).join("")}</tr>`;
     });
-    h += `</tbody></table></div><p class="legenda">Clique num número para ver a conta · n/a = não se aplica a bancos e seguradoras · "-" = sem dado</p>${lista("Avisos", at.avisos)}</section>`;
+    h += `</tbody></table></div>`;
+    if (at.trimestres && at.trimestres.length) {
+      h += `<h3 class="subtitulo">Por trimestre <small>R$ mi · o último é ${esc(at.trimestres[at.trimestres.length - 1])}</small></h3><div class="rolagem"><table><thead><tr><th></th>${at.trimestres.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>`;
+      at.linhasTri.forEach((l, il) => {
+        h += `<tr><td>${esc(l.nome)}</td>${l.celulas.map((c, ic) => `<td class="clicavel ${c.ok ? "" : "sem"} ${c.ok && c.texto.startsWith("-") ? "perda" : ""}" data-t="${ia},${il},${ic}" title="Ver a conta">${esc(c.texto)}</td>`).join("")}</tr>`;
+      });
+      h += `</tbody></table></div>`;
+    }
+    h += `<p class="legenda">Clique num número para ver a conta · n/a = não se aplica a bancos e seguradoras · "-" = sem dado</p>${lista("Avisos", at.avisos)}</section>`;
   });
   h += lista("Observações", d.notas);
   $("#conteudo").innerHTML = h;
   ligarFormIndicadores();
   $("#conteudo").onclick = (ev) => {
-    const td = ev.target.closest("td[data-i]");
+    const td = ev.target.closest("td[data-i], td[data-t]");
     if (!td) return;
-    const [ia, il, ic] = td.dataset.i.split(",").map(Number);
-    const at = d.ativos[ia], l = at.linhas[il], c = l.celulas[ic];
-    abrirPainel(at, l, at.colunas[ic], c);
+    const tri = td.dataset.t !== undefined;
+    const [ia, il, ic] = (tri ? td.dataset.t : td.dataset.i).split(",").map(Number);
+    const at = d.ativos[ia], l = (tri ? at.linhasTri : at.linhas)[il], c = l.celulas[ic];
+    abrirPainel(at, l, (tri ? at.trimestres : at.colunas)[ic], c);
   };
 }
 function ligarFormIndicadores() {

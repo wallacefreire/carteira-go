@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"golang.org/x/text/encoding/charmap"
@@ -79,13 +80,19 @@ func TestLerBalancos(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// DRE: só ÚLTIMO, sem a conta 3.02 (não usada). Balanço: PENÚLTIMO entra.
-	if len(contas) != 3 {
-		t.Fatalf("quer 3 contas, veio %d: %+v", len(contas), contas)
+	// ÚLTIMO e PENÚLTIMO (ano anterior reapresentado) entram, sem a conta 3.02 (não usada).
+	if len(contas) != 4 {
+		t.Fatalf("quer 4 contas, veio %d: %+v", len(contas), contas)
 	}
 	porChave := map[string]Conta{}
 	for _, c := range contas {
-		porChave[c.Chave] = c
+		if c.DtFim.Year() == 2025 || c.Chave == "pl" {
+			porChave[c.Chave] = c
+		}
+	}
+	anterior := slices.IndexFunc(contas, func(c Conta) bool { return c.Chave == "lucro" && c.DtFim.Year() == 2024 })
+	if anterior < 0 || contas[anterior].Valor != 93460000 || !contas[anterior].DtRefer.Equal(contas[0].DtRefer) {
+		t.Errorf("lucro de 2024 reapresentado no documento de 2025: %+v", contas)
 	}
 	if c := porChave["lucro"]; c.Valor != 101130000 || !c.Consolidado || c.DtIni.Format("2006-01-02") != "2025-01-01" {
 		t.Errorf("lucro: %+v", c)
