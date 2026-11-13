@@ -89,6 +89,13 @@ func (b *Banco) SubstituirBalancos(arquivo string, contas []cvm.Conta, comps []c
 	return tx.Commit()
 }
 
+// TemArquivoCVM diz se o banco já tem as contas de um arquivo da CVM.
+func (b *Banco) TemArquivoCVM(arquivo string) (bool, error) {
+	var n int
+	err := b.db.QueryRow(`SELECT COUNT(*) FROM (SELECT 1 FROM cvm_contas WHERE arquivo = ? LIMIT 1)`, arquivo).Scan(&n)
+	return n > 0, err
+}
+
 // SalvarTickers grava os códigos de negociação (substitui os que já existiam).
 func (b *Banco) SalvarTickers(tickers []cvm.Ticker) error {
 	tx, err := b.db.Begin()

@@ -17,22 +17,36 @@ import (
 	"carteira/internal/indicadores"
 )
 
-// Com dados da CVM mais velhos que isso, "indicadores" atualiza sozinho antes.
-const validadeCVM = 7 * 24 * time.Hour
+// Com a última conferência da CVM mais velha que isso, "indicadores" confere
+// de novo antes (só baixa o que mudou no servidor: em época de balanço, a CVM
+// republica os arquivos toda semana).
+const validadeCVM = 24 * time.Hour
 
 // ---------- carteira cvm ----------
 
-// atualizarCVM baixa os arquivos da CVM que faltam ou estão velhos e recarrega o banco.
-func (a *app) atualizarCVM(ctx context.Context) error {
+// atualizarCVM baixa os arquivos da CVM que faltam ou mudaram e recarrega no
+// banco os que mudaram. Com tudo=true, recarrega todos (ex.: depois de o
+// programa passar a ler uma conta nova).
+func (a *app) atualizarCVM(ctx context.Context, tudo bool) error {
 	agora := a.agora()
 	dir := filepath.Join(a.dirDados, "cvm")
 	arqs := cvm.Necessarios(agora)
 	cli := &http.Client{Timeout: 10 * time.Minute}
-	caminhos, err := cvm.Baixar(ctx, cli, dir, arqs, agora, func(s string) { fmt.Fprintln(a.saida, s+"…") })
+	caminhos, novos, err := cvm.Baixar(ctx, cli, dir, arqs, agora, func(s string) { fmt.Fprintln(a.saida, s+"…") })
 	if err != nil {
 		return err
 	}
+	tickers, err := a.banco.TickersCVM()
+	if err != nil {
+		return err
+	}
+	// FCA: os dois anos juntos, porque o do ano atual sobrescreve o anterior.
+	recarregarFCA := tudo || len(tickers) == 0
+	for arq := range novos {
+		recarregarFCA = recarregarFCA || arq.Tipo == "FCA"
+	}
 
+	recarregados := 0
 	// FCA do ano anterior primeiro: o do ano atual sobrescreve o que mudou.
 	for _, arq := range arqs {
 		caminho, ok := caminhos[arq]
@@ -40,6 +54,10 @@ func (a *app) atualizarCVM(ctx context.Context) error {
 			continue
 		}
 		if arq.Tipo == "FCA" {
+			if !recarregarFCA {
+				continue
+			}
+			recarregados++
 			tickers, err := cvm.LerTickers(caminho)
 			if err != nil {
 				return err
@@ -49,6 +67,16 @@ func (a *app) atualizarCVM(ctx context.Context) error {
 			}
 			continue
 		}
+		if !tudo && !novos[arq] {
+			tem, err := a.banco.TemArquivoCVM(arq.Nome())
+			if err != nil {
+				return err
+			}
+			if tem {
+				continue // já está no banco e não mudou
+			}
+		}
+		recarregados++
 		contas, comps, err := cvm.LerBalancos(caminho)
 		if err != nil {
 			return err
@@ -60,7 +88,11 @@ func (a *app) atualizarCVM(ctx context.Context) error {
 	if err := a.banco.SalvarConfigTexto("cvm_atualizado_em", agora.Format(time.RFC3339)); err != nil {
 		return err
 	}
-	fmt.Fprintf(a.saida, "Dados da CVM atualizados (%d arquivos em %s).\n", len(caminhos), dir)
+	if recarregados == 0 {
+		fmt.Fprintln(a.saida, "Dados da CVM conferidos: nada novo no servidor.")
+	} else {
+		fmt.Fprintf(a.saida, "Dados da CVM atualizados (%d de %d arquivos recarregados, em %s).\n", recarregados, len(caminhos), dir)
+	}
 	return nil
 }
 
@@ -74,8 +106,8 @@ func (a *app) garantirCVM(ctx context.Context) error {
 			return nil
 		}
 	}
-	fmt.Fprintln(a.saida, "Atualizando os dados da CVM (pode levar 1 ou 2 minutos)…")
-	return a.atualizarCVM(ctx)
+	fmt.Fprintln(a.saida, "Conferindo se a CVM publicou balanços novos…")
+	return a.atualizarCVM(ctx, false)
 }
 
 // ---------- carteira indicadores ----------

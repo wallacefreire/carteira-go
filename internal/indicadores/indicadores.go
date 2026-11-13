@@ -173,8 +173,12 @@ func Calcular(t cvm.Ticker, contas []cvm.Conta, comps []cvm.Composicao, cot Cota
 
 	// Venda ou fechamento de negócio pesando no lucro: o P/L engana.
 	if l, rec := col12.Valores["lucro"], col12.Valores["lucro_rec"]; l.OK && rec.OK && math.Abs(l.Numero-rec.Numero) > 0.2*math.Abs(l.Numero) {
-		r.avisar(fmt.Sprintf("operações descontinuadas (negócio vendido ou encerrado) pesam no lucro de 12 meses: R$ %s mi com elas, R$ %s mi sem. O radar usa o P/L sem descontinuadas.",
-			formato.Numero(l.Numero/1e6, 1), formato.Numero(rec.Numero/1e6, 1)))
+		aviso := fmt.Sprintf("operações descontinuadas (negócio vendido ou encerrado) pesam no lucro de 12 meses: R$ %s mi com elas, R$ %s mi sem. O radar usa o P/L sem descontinuadas.",
+			formato.Numero(l.Numero/1e6, 1), formato.Numero(rec.Numero/1e6, 1))
+		if rec.Nota == notaReclassificado {
+			aviso += " O valor sem elas é " + notaReclassificado + "."
+		}
+		r.avisar(aviso)
 	}
 
 	// Lucro consolidado muito diferente do da controladora: parte do lucro é de
@@ -293,7 +297,39 @@ func (c calc) lucroRecorrente(j janela, lucro float64, partesLucro []Parte) Valo
 	if len(partes) == 0 {
 		return Valor{Numero: lucro, OK: true, Partes: partesLucro, Nota: "sem operações descontinuadas no período: igual ao lucro líquido"}
 	}
-	return Valor{Numero: lucro - desc, OK: true, Partes: concat(partesLucro, partes)}
+	v := Valor{Numero: lucro - desc, OK: true, Partes: concat(partesLucro, partes)}
+	if c.reclassificado(j) {
+		v.Nota = notaReclassificado
+	}
+	return v
+}
+
+const notaReclassificado = "aproximado: a empresa reclassificou como descontinuado um período já publicado; o balanço anual pode ainda estar na classificação antiga (confira no RI)"
+
+// reclassificado diz se o período do ano anterior que a janela subtrai foi
+// reclassificado depois de publicado (o documento novo traz outro valor de
+// descontinuadas que o documento original). Aí o ano fechado pode estar na
+// classificação antiga, e a conta de 12 meses mistura as duas.
+func (c calc) reclassificado(j janela) bool {
+	for _, t := range j.termos {
+		if t.sinal > 0 {
+			continue
+		}
+		for _, cons := range []bool{true, false} {
+			novo, ok := c.achar("lucro_descontinuadas", cons, t.ini, t.fim)
+			if !ok {
+				continue
+			}
+			for _, x := range c.contas {
+				if x.Chave == "lucro_descontinuadas" && x.Consolidado == cons && x.DtIni.Equal(t.ini) && x.DtFim.Equal(t.fim) &&
+					x.DtRefer.Equal(t.fim) && math.Abs(x.Valor-novo.Valor) > 1e6 {
+					return true // diferença acima de R$ 1 mi entre o original e o reclassificado
+				}
+			}
+			break
+		}
+	}
+	return false
 }
 
 func (c calc) lucroConsolidado(ini, fim time.Time) (float64, Parte, bool) {

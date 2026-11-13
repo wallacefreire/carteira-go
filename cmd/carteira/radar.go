@@ -218,7 +218,7 @@ func (a *app) dadosRadar(ctx context.Context) (dadosRadar, error) {
 	}
 	// Banco de antes do setor: baixa o FCA de novo uma vez para preenchê-lo.
 	if !slices.ContainsFunc(tks, func(t cvm.Ticker) bool { return t.Setor != "" }) {
-		if err := a.atualizarCVM(ctx); err != nil {
+		if err := a.atualizarCVM(ctx, true); err != nil {
 			return d, err
 		}
 		if tks, err = a.banco.TickersCVM(); err != nil {

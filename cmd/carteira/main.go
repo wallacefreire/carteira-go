@@ -141,7 +141,7 @@ func executar(args []string, saida io.Writer) error {
 	case "observacao":
 		return a.observacao(ctx)
 	case "cvm":
-		return a.atualizarCVM(ctx)
+		return a.atualizarCVM(ctx, true)
 	case "precos":
 		return a.atualizarPrecos(ctx, true)
 	case "indicadores":

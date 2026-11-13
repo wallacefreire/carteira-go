@@ -56,21 +56,33 @@ func Necessarios(hoje time.Time) []Arquivo {
 }
 
 // Baixar salva no diretório os arquivos que faltam ou que estão velhos.
-// Arquivos dos 2 últimos anos mudam toda semana (a CVM republica) e são
-// baixados de novo se tiverem mais de 7 dias; os mais antigos, só se faltarem.
-// Devolve os caminhos de todos os arquivos.
-func Baixar(ctx context.Context, cli *http.Client, dir string, arqs []Arquivo, hoje time.Time, progresso func(string)) (map[Arquivo]string, error) {
+// Arquivos dos 2 últimos anos mudam toda semana (a CVM republica): o
+// servidor diz quando cada um mudou, e só baixa se for mais novo que a cópia
+// (sem resposta do servidor, baixa se a cópia tiver mais de 7 dias). Os mais
+// antigos, só se faltarem. Devolve os caminhos de todos os arquivos e quais
+// foram baixados agora.
+func Baixar(ctx context.Context, cli *http.Client, dir string, arqs []Arquivo, hoje time.Time, progresso func(string)) (map[Arquivo]string, map[Arquivo]bool, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	caminhos := map[Arquivo]string{}
+	novos := map[Arquivo]bool{}
 	for _, a := range arqs {
 		caminho := filepath.Join(dir, a.Nome())
 		caminhos[a] = caminho
 		info, err := os.Stat(caminho)
 		recente := a.Ano >= hoje.Year()-1
-		if err == nil && (!recente || hoje.Sub(info.ModTime()) < 7*24*time.Hour) {
+		if err == nil && !recente {
 			continue
+		}
+		if err == nil {
+			if mod, errMod := baixar.Modificado(ctx, cli, a.URL()); errMod == nil {
+				if !mod.After(info.ModTime()) {
+					continue // a cópia é de depois da última mudança no servidor
+				}
+			} else if hoje.Sub(info.ModTime()) < 7*24*time.Hour {
+				continue
+			}
 		}
 		if progresso != nil {
 			progresso("baixando " + a.Nome())
@@ -81,10 +93,11 @@ func Baixar(ctx context.Context, cli *http.Client, dir string, arqs []Arquivo, h
 				delete(caminhos, a)
 				continue
 			}
-			return nil, fmt.Errorf("baixar %s: %w", a.Nome(), err)
+			return nil, nil, fmt.Errorf("baixar %s: %w", a.Nome(), err)
 		}
+		novos[a] = true
 	}
-	return caminhos, nil
+	return caminhos, novos, nil
 }
 
 // Conta é um valor de uma demonstração, já com nome canônico (Chave).

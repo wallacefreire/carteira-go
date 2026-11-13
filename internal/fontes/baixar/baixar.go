@@ -9,7 +9,28 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 )
+
+// Modificado pergunta ao servidor (HEAD) quando o arquivo mudou pela última vez.
+func Modificado(ctx context.Context, cli *http.Client, url string) (time.Time, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	if err != nil {
+		return time.Time{}, err
+	}
+	resp, err := cli.Do(req)
+	if err != nil {
+		return time.Time{}, err
+	}
+	resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return time.Time{}, ErrNaoExiste
+	}
+	if resp.StatusCode != http.StatusOK {
+		return time.Time{}, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	return http.ParseTime(resp.Header.Get("Last-Modified"))
+}
 
 // ErrNaoExiste indica resposta 404 (ex.: arquivo do ano que ainda não saiu).
 var ErrNaoExiste = errors.New("arquivo não existe no servidor")
