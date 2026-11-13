@@ -30,8 +30,12 @@ type Def struct {
 var Lista = []Def{
 	{"lucro", "Lucro líquido", "R$", "lucro atribuído aos acionistas da empresa (sem a parte de sócios de controladas)",
 		"crescendo é bom; prejuízo no ano reprova no filtro"},
+	{"lucro_rec", "Lucro sem descontinuadas", "R$", "lucro líquido − resultado de operações descontinuadas (negócio vendido ou encerrado, linha 3.10 da DRE)",
+		"é o lucro que deve se repetir; muito diferente do lucro líquido = houve venda ou fechamento de negócio no período"},
 	{"pl", "P/L", "x", "(ações × cotação) ÷ lucro líquido; no ano, cotação de fechamento do último pregão do ano; em 12m, cotação atual",
 		"abaixo de 10: barato · 10 a 20: médio · acima de 20: caro (compare com o setor) · negativo: prejuízo"},
+	{"pl_rec", "P/L sem descontinuadas", "x", "valor de mercado ÷ lucro sem operações descontinuadas; é o P/L que o radar usa",
+		"igual ao P/L quando a empresa não vendeu nem fechou negócios; leia como o P/L"},
 	{"ev_ebitda", "EV/EBITDA", "x", "(valor de mercado + dívida líquida + sócios de controladas) ÷ (EBIT + depreciação e amortização); valor de mercado como no P/L",
 		"abaixo de 6: barato · 6 a 10: médio · acima de 10: caro (compare com o setor) · não serve para bancos"},
 	{"pvp", "P/VP", "x", "valor de mercado ÷ patrimônio líquido dos acionistas da empresa (fim do período); valor de mercado como no P/L",
@@ -143,6 +147,7 @@ func Calcular(t cvm.Ticker, contas []cvm.Conta, comps []cvm.Composicao, cot Cota
 		col := c.coluna(fmt.Sprint(a.fim.Year()), j, a.fim, a.fim.AddDate(-1, 0, 0), r.Financeira)
 		m := c.mercadoAno(t, comps, h, a, &r)
 		col.Valores["pl"] = pl(m, col.Valores["lucro"])
+		col.Valores["pl_rec"] = pl(m, col.Valores["lucro_rec"])
 		col.Valores["ev_ebitda"] = c.evEbitda(m, j, a.fim, r.Financeira)
 		col.Valores["pvp"] = c.pvp(m, a.fim)
 		riscoAno(col, h, a.fim.Year())
@@ -155,6 +160,7 @@ func Calcular(t cvm.Ticker, contas []cvm.Conta, comps []cvm.Composicao, cot Cota
 	col12 := c.coluna("12m", j12, fim12, fim12.AddDate(-1, 0, 0), r.Financeira)
 	m12 := c.valorMercado(t, comps, cot, time.Time{}, anos[len(anos)-1], &r)
 	col12.Valores["pl"] = pl(m12, col12.Valores["lucro"])
+	col12.Valores["pl_rec"] = pl(m12, col12.Valores["lucro_rec"])
 	col12.Valores["ev_ebitda"] = c.evEbitda(m12, j12, fim12, r.Financeira)
 	col12.Valores["pvp"] = c.pvp(m12, fim12)
 	if m12.motivo == "" {
@@ -164,6 +170,12 @@ func Calcular(t cvm.Ticker, contas []cvm.Conta, comps []cvm.Composicao, cot Cota
 	r.Colunas = append(r.Colunas, col12)
 	r.Colunas = append(r.Colunas, media(colunasAnuais))
 	r.PrejuizoTrimestral = c.trimestresNegativos(anos)
+
+	// Venda ou fechamento de negócio pesando no lucro: o P/L engana.
+	if l, rec := col12.Valores["lucro"], col12.Valores["lucro_rec"]; l.OK && rec.OK && math.Abs(l.Numero-rec.Numero) > 0.2*math.Abs(l.Numero) {
+		r.avisar(fmt.Sprintf("operações descontinuadas (negócio vendido ou encerrado) pesam no lucro de 12 meses: R$ %s mi com elas, R$ %s mi sem. O radar usa o P/L sem descontinuadas.",
+			formato.Numero(l.Numero/1e6, 1), formato.Numero(rec.Numero/1e6, 1)))
+	}
 
 	// Lucro consolidado muito diferente do da controladora: parte do lucro é de
 	// sócios de controladas (ex.: fundo consolidado). Avisa, porque sites que
@@ -258,6 +270,30 @@ func (c calc) plControladora(d time.Time) (float64, []Parte, bool) {
 	}
 	pMinor.Nome = "(−) " + pMinor.Nome
 	return total - minor, []Parte{pTotal, pMinor}, true
+}
+
+// lucroRecorrente tira do lucro o resultado de operações descontinuadas
+// (linha 3.10). Documento sem a linha conta como zero. A linha é do
+// consolidado inteiro: a parte de sócios de controladas, se houver, fica junto.
+func (c calc) lucroRecorrente(j janela, lucro float64, partesLucro []Parte) Valor {
+	var desc float64
+	var partes []Parte
+	for _, t := range j.termos {
+		v, p, ok := c.primeiro("Operações descontinuadas", t.ini, t.fim, fonte{"lucro_descontinuadas", true}, fonte{"lucro_descontinuadas", false})
+		if !ok || v == 0 {
+			continue
+		}
+		desc += t.sinal * v
+		p.Nome = "(−) Operações descontinuadas " + rotuloPeriodo(t.ini, t.fim)
+		if t.sinal < 0 {
+			p.Nome = "(+) Operações descontinuadas " + rotuloPeriodo(t.ini, t.fim) + " (já saiu do período)"
+		}
+		partes = append(partes, p)
+	}
+	if len(partes) == 0 {
+		return Valor{Numero: lucro, OK: true, Partes: partesLucro, Nota: "sem operações descontinuadas no período: igual ao lucro líquido"}
+	}
+	return Valor{Numero: lucro - desc, OK: true, Partes: concat(partesLucro, partes)}
 }
 
 func (c calc) lucroConsolidado(ini, fim time.Time) (float64, Parte, bool) {
@@ -381,8 +417,10 @@ func (c calc) coluna(rotulo string, j janela, fim, fimAnterior time.Time, financ
 	lucro, partesLucro, okLucro := j.soma("Lucro", c.lucro)
 	if okLucro {
 		col.Valores["lucro"] = Valor{Numero: lucro, OK: true, Partes: partesLucro}
+		col.Valores["lucro_rec"] = c.lucroRecorrente(j, lucro, partesLucro)
 	} else {
 		col.Valores["lucro"] = Valor{Motivo: motivoSemDado}
+		col.Valores["lucro_rec"] = Valor{Motivo: motivoSemDado}
 	}
 
 	// ROE: lucro ÷ PL médio da controladora (PL individual = PL dos acionistas da empresa).

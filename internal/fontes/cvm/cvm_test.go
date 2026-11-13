@@ -22,6 +22,8 @@ func TestChave(t *testing.T) {
 		{"BPP", "2.07.02", "Patrimônio Líquido Atribuído aos Não Controladores", "pl_nao_controladores"},
 		{"BPP", "2.01", "Passivos Financeiros Avaliados ao Valor Justo através do Resultado", ""}, // banco
 		{"DVA", "7.04.01", "Depreciação, Amortização e Exaustão", "da"},
+		{"DRE", "3.10", "Resultado Líquido de Operações Descontinuadas", "lucro_descontinuadas"},
+		{"DRE", "3.10.01", "Lucro/Prejuízo Líquido das Operações Descontinuadas", ""},
 		{"BPA", "1.01.02", "Aplicações Financeiras", "aplicacoes"},
 	}
 	for _, c := range casos {

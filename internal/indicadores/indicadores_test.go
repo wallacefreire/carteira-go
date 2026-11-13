@@ -241,3 +241,30 @@ func TestPVP(t *testing.T) {
 		t.Errorf("P/VP = %+v, quer 1,8", v)
 	}
 }
+
+func TestLucroSemDescontinuadas(t *testing.T) {
+	// Vendeu um negócio no 1º semestre de 2026: ganho de 60 nas descontinuadas.
+	// 12m = 2025 (sem a linha) + 1S26 (60) − 1S25 (10) = 50 a tirar do lucro de 150.
+	contas := append(empresaExemplo(),
+		fluxo("lucro_descontinuadas", true, "2026-06-30", "2026-01-01", "2026-06-30", 60),
+		fluxo("lucro_descontinuadas", true, "2025-06-30", "2025-01-01", "2025-06-30", 10),
+	)
+	tk := cvm.Ticker{Codigo: "TEST3", AcoesPorUnidade: 1}
+	comps := []cvm.Composicao{{DtRefer: d("2026-06-30"), Ordinarias: 100, TesourariaOrdinaria: 10}}
+	r := Calcular(tk, contas, comps, Cotacao{Preco: 20, Fonte: "teste"}, Historico{})
+	m12 := r.Colunas[2].Valores
+	if v := m12["lucro_rec"]; !perto(v.Numero, 100) {
+		t.Errorf("lucro sem descontinuadas = %v, quer 100", v.Numero)
+	}
+	// 1.800 de valor de mercado ÷ 100.
+	if v := m12["pl_rec"]; !perto(v.Numero, 18) {
+		t.Errorf("P/L sem descontinuadas = %v, quer 18", v.Numero)
+	}
+	if len(r.Avisos) == 0 {
+		t.Error("devia avisar das operações descontinuadas")
+	}
+	// Ano sem a linha: igual ao lucro.
+	if a := r.Colunas[1].Valores; !perto(a["lucro_rec"].Numero, a["lucro"].Numero) {
+		t.Error("2025 sem descontinuadas devia ser igual ao lucro")
+	}
+}

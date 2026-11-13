@@ -113,7 +113,8 @@ func Avaliar(r indicadores.Resultado, lim Limites) Avaliacao {
 	}
 	av.adicionar(lucro)
 
-	pl := m12.Valores["pl"]
+	// P/L sem operações descontinuadas: um negócio vendido não deixa a ação barata.
+	pl := m12.Valores["pl_rec"]
 	av.PL = pl.Numero
 	av.adicionar(criterio("P/L", pl, "x", func(v float64) bool { return v > 0 && v <= lim.PLMax }))
 	av.adicionar(criterio("ROE 5a", media.Valores["roe"], "%", func(v float64) bool { return v >= lim.ROEMin }))

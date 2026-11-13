@@ -213,15 +213,19 @@ func lerDemonstracao(f *zip.File, demonstracao string, consolidado bool) ([]Cont
 			}
 			return l[i]
 		}
-		// ÚLTIMO = exercício do documento. PENÚLTIMO só interessa no balanço
-		// patrimonial: dá o saldo do fim do ano anterior (para médias).
-		ordem := campo("ORDEM_EXERC")
-		if ordem != "ÚLTIMO" && !(saldo && ordem == "PENÚLTIMO") {
-			continue
-		}
 		codigo, desc := campo("CD_CONTA"), campo("DS_CONTA")
 		chave := Chave(demonstracao, codigo, desc)
 		if chave == "" {
+			continue
+		}
+		// ÚLTIMO = exercício do documento. PENÚLTIMO interessa no balanço
+		// patrimonial (saldo do fim do ano anterior, para médias) e nas
+		// operações descontinuadas: quando a empresa vende um negócio, o
+		// documento novo reclassifica o mesmo período do ano anterior, e o
+		// antigo ainda o tinha como operação normal (TOTVS e a Dimensa, 2026).
+		ordem := campo("ORDEM_EXERC")
+		penultimoServe := saldo || chave == "lucro_descontinuadas"
+		if ordem != "ÚLTIMO" && !(penultimoServe && ordem == "PENÚLTIMO") {
 			continue
 		}
 		valor, err := strconv.ParseFloat(campo("VL_CONTA"), 64)
@@ -265,6 +269,8 @@ func Chave(demonstracao, codigo, descricao string) string {
 			return "receita"
 		case codigo == "3.05" && d == "resultado antes do resultado financeiro e dos tributos":
 			return "ebit"
+		case nivel == 2 && strings.HasPrefix(d, "resultado liquido de operacoes descontinuadas"):
+			return "lucro_descontinuadas" // negócio vendido ou encerrado (ex.: TOTVS vendeu a Dimensa)
 		case codigo == "3.11":
 			return "lucro"
 		case codigo == "3.11.01":

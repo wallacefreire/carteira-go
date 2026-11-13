@@ -14,7 +14,7 @@ func resultado(lucros []float64, pl, roe, roic, beta, correl indicadores.Valor) 
 		r.Colunas = append(r.Colunas, indicadores.Coluna{Rotulo: string(rune('A' + i)), Valores: map[string]indicadores.Valor{"lucro": ok(l), "roe": roe, "roic": roic}})
 	}
 	r.Colunas = append(r.Colunas,
-		indicadores.Coluna{Rotulo: "12m", Valores: map[string]indicadores.Valor{"pl": pl, "beta": beta, "correlacao": correl, "dl_ebitda": ok(1), "pvp": ok(1.5)}},
+		indicadores.Coluna{Rotulo: "12m", Valores: map[string]indicadores.Valor{"pl_rec": pl, "beta": beta, "correlacao": correl, "dl_ebitda": ok(1), "pvp": ok(1.5)}},
 		indicadores.Coluna{Rotulo: "Média 5a", Valores: map[string]indicadores.Valor{"roe": roe, "roic": roic}},
 	)
 	return r
