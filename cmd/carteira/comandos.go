@@ -132,6 +132,7 @@ func (a *app) dadosPosicao(ctx context.Context) (dadosPosicao, error) {
 		}
 	}
 	slices.Sort(abertos)
+	abertos = slices.Compact(abertos) // o mesmo código pode ser meu e de terceiros
 
 	cots, notas := a.cotacoes(ctx, abertos)
 	precos := map[string]float64{}
