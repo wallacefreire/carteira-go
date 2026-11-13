@@ -86,7 +86,12 @@ func Abrir(caminho string) (*Banco, error) {
 		db.Close()
 		return nil, err
 	}
-	// Setor do FCA, guardado a partir da Fase 5 (carteira longo).
+	// Operação de terceiros na conta do Wallace (03/11/2026).
+	if err := adicionarColuna(db, "operacoes", "terceiros", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	// Setor do FCA, guardado a partir da Fase 5.
 	if err := adicionarColuna(db, "cvm_tickers", "setor", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		db.Close()
 		return nil, err
@@ -170,13 +175,26 @@ func (b *Banco) Importar(ops []carteira.Operacao, provs []carteira.Provento) (no
 	return novasOps, novosProvs, nil
 }
 
-// Operacoes lista as operações em ordem de data. Com ticker vazio, lista todas.
+// Operacoes lista as operações do Wallace em ordem de data (sem as de
+// terceiros). Com ticker vazio, lista todas.
 func (b *Banco) Operacoes(ticker string) ([]carteira.Operacao, error) {
-	q := `SELECT id, data, ticker, tipo, quantidade, preco, descricao, origem, COALESCE(chave, ''), ticker_anterior FROM operacoes`
+	return b.operacoes(ticker, false)
+}
+
+// TodasOperacoes inclui as de terceiros (para a listagem).
+func (b *Banco) TodasOperacoes(ticker string) ([]carteira.Operacao, error) {
+	return b.operacoes(ticker, true)
+}
+
+func (b *Banco) operacoes(ticker string, comTerceiros bool) ([]carteira.Operacao, error) {
+	q := `SELECT id, data, ticker, tipo, quantidade, preco, descricao, origem, COALESCE(chave, ''), ticker_anterior, terceiros FROM operacoes WHERE 1 = 1`
 	var args []any
 	if ticker != "" {
-		q += ` WHERE ticker = ? OR ticker_anterior = ?`
+		q += ` AND (ticker = ? OR ticker_anterior = ?)`
 		args = append(args, ticker, ticker)
+	}
+	if !comTerceiros {
+		q += ` AND terceiros = 0`
 	}
 	q += ` ORDER BY data, id`
 
@@ -190,7 +208,7 @@ func (b *Banco) Operacoes(ticker string) ([]carteira.Operacao, error) {
 	for rows.Next() {
 		var op carteira.Operacao
 		var data, tipo string
-		if err := rows.Scan(&op.ID, &data, &op.Ticker, &tipo, &op.Quantidade, &op.Preco, &op.Descricao, &op.Origem, &op.Chave, &op.TickerAnterior); err != nil {
+		if err := rows.Scan(&op.ID, &data, &op.Ticker, &tipo, &op.Quantidade, &op.Preco, &op.Descricao, &op.Origem, &op.Chave, &op.TickerAnterior, &op.Terceiros); err != nil {
 			return nil, err
 		}
 		if op.Data, err = time.Parse(formatoData, data); err != nil {
@@ -200,6 +218,18 @@ func (b *Banco) Operacoes(ticker string) ([]carteira.Operacao, error) {
 		ops = append(ops, op)
 	}
 	return ops, rows.Err()
+}
+
+// MarcarTerceiros marca (ou desmarca) uma operação como de outra pessoa.
+// Devolve false se o ID não existe. A linha continua no banco, então importar
+// o extrato de novo não a traz de volta.
+func (b *Banco) MarcarTerceiros(id int64, sim bool) (bool, error) {
+	r, err := b.db.Exec(`UPDATE operacoes SET terceiros = ? WHERE id = ?`, sim, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := r.RowsAffected()
+	return n > 0, err
 }
 
 // RemoverOperacao apaga uma operação. Devolve false se o ID não existe.

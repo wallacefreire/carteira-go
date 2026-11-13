@@ -27,6 +27,8 @@ Uso:
                                             QTD negativa tira ações
   carteira operacoes [ATIVO]                lista as operações gravadas
   carteira remover <ID>                     apaga uma operação (o ID aparece em "operacoes")
+  carteira terceiros <ID>...                operação feita para outra pessoa: fica fora da posição
+                                            (importar de novo não a traz de volta; desfazer: carteira minha <ID>)
   carteira observar <ATIVO>...              põe ativos na lista de observação
   carteira desobservar <ATIVO>...           tira ativos da lista de observação
   carteira observacao                       cotação dos ativos observados
@@ -127,6 +129,10 @@ func executar(args []string, saida io.Writer) error {
 		return a.operacoes(args)
 	case "remover":
 		return a.remover(args)
+	case "terceiros":
+		return a.terceiros(args, true)
+	case "minha":
+		return a.terceiros(args, false)
 	case "observar":
 		return a.observar(args)
 	case "desobservar":

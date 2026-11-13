@@ -36,6 +36,9 @@ type Operacao struct {
 	Chave      string // identifica a linha do extrato para não importar duas vezes; vazia no manual
 	// TickerAnterior é o código antigo numa troca de código; vazio nos outros tipos.
 	TickerAnterior string
+	// Terceiros marca operação feita para outra pessoa (ex.: os pais) na conta
+	// do Wallace: fica gravada, mas não entra na posição nem no preço médio.
+	Terceiros bool
 }
 
 // Provento é um dividendo, JCP ou rendimento recebido.

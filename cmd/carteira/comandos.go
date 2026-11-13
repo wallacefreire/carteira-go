@@ -548,7 +548,7 @@ func (a *app) operacoes(args []string) error {
 	if len(args) > 0 {
 		ticker, _ = carteira.NormalizarAtivo(args[0])
 	}
-	ops, err := a.banco.Operacoes(ticker)
+	ops, err := a.banco.TodasOperacoes(ticker)
 	if err != nil {
 		return err
 	}
@@ -557,12 +557,42 @@ func (a *app) operacoes(args []string) error {
 		return nil
 	}
 	tw := tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tData\tAtivo\tTipo\tQtd\tPreço\tOrigem\tMovimentação")
+	fmt.Fprintln(tw, "ID\tData\tAtivo\tTipo\tQtd\tPreço\tOrigem\tMovimentação\t")
 	for _, op := range ops {
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", op.ID, formato.Data(op.Data), op.Ticker, op.Tipo,
-			formato.Quantidade(op.Quantidade), formato.Moeda(op.Preco), op.Origem, op.Descricao)
+		marca := ""
+		if op.Terceiros {
+			marca = "de terceiros (fora da posição)"
+		}
+		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", op.ID, formato.Data(op.Data), op.Ticker, op.Tipo,
+			formato.Quantidade(op.Quantidade), formato.Moeda(op.Preco), op.Origem, op.Descricao, marca)
 	}
 	return tw.Flush()
+}
+
+// terceiros marca operações feitas para outra pessoa; sim=false desfaz ("carteira minha").
+func (a *app) terceiros(args []string, sim bool) error {
+	if len(args) == 0 {
+		return errors.New("uso: carteira terceiros <ID>...  (desfazer: carteira minha <ID>...)")
+	}
+	for _, arg := range args {
+		id, err := strconv.ParseInt(arg, 10, 64)
+		if err != nil {
+			return fmt.Errorf("ID inválido %q", arg)
+		}
+		ok, err := a.banco.MarcarTerceiros(id, sim)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("operação #%d não existe", id)
+		}
+		if sim {
+			fmt.Fprintf(a.saida, "Operação #%d marcada como de terceiros: sai da posição e do preço médio.\n", id)
+		} else {
+			fmt.Fprintf(a.saida, "Operação #%d volta a ser sua.\n", id)
+		}
+	}
+	return nil
 }
 
 func (a *app) remover(args []string) error {
