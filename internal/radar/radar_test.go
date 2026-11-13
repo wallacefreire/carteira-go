@@ -58,3 +58,19 @@ func TestOrdenar(t *testing.T) {
 		t.Errorf("ordem: %s, %s, %s", avs[0].Ticker, avs[1].Ticker, avs[2].Ticker)
 	}
 }
+
+func TestLucro10Anos(t *testing.T) {
+	// Os 5 anos das colunas são bons, mas houve prejuízo em 2017.
+	r := resultado([]float64{1, 2, 3, 4, 5}, ok(8), ok(0.20), ok(0.15), ok(0.7), ok(0.3))
+	for ano := 2016; ano <= 2025; ano++ {
+		v := 10.0
+		if ano == 2017 {
+			v = -3
+		}
+		r.LucrosAnuais = append(r.LucrosAnuais, indicadores.LucroAno{Ano: ano, Valor: v, OK: true})
+	}
+	av := Avaliar(r, Padrao)
+	if c := av.Criterios[0]; c.Nome != "Lucro 10a" || c.OK || c.Valor != "1 prej." {
+		t.Errorf("lucro de 10 anos: %+v", c)
+	}
+}

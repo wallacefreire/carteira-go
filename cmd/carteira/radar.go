@@ -92,7 +92,7 @@ func (a *app) filtro(args []string) error {
 		}
 		fmt.Fprintf(a.saida, "  %-11s %-8s %s\n", it.nome, txt, it.descricao)
 	}
-	fmt.Fprintln(a.saida, "  e lucro em todos os anos (5 anos de balanço).")
+	fmt.Fprintln(a.saida, "  e lucro em todos os anos (até 10 anos de balanço).")
 	fmt.Fprintln(a.saida, "Para mudar: carteira filtro <critério> <valor>  (ex.: carteira filtro roe 15)")
 	return nil
 }

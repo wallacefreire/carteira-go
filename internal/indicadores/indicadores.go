@@ -104,8 +104,19 @@ type Resultado struct {
 	ValorMercado       float64   // com a cotação usada no P/L de 12m; zero se não deu para calcular
 	Colunas            []Coluna
 	Avisos             []string
-	PrejuizoTrimestral []string // trimestres com prejuízo nos 2 últimos anos e neste ano (ex.: "2T25")
+	PrejuizoTrimestral []string   // trimestres com prejuízo nos 2 últimos anos e neste ano (ex.: "2T25")
+	LucrosAnuais       []LucroAno // até 10 anos, do mais antigo ao mais novo (critério do radar)
 }
+
+// LucroAno é o lucro dos acionistas num exercício (OK=false: sem a conta).
+type LucroAno struct {
+	Ano   int
+	Valor float64
+	OK    bool
+}
+
+// AnosDeLucro é quantos exercícios o radar confere.
+const AnosDeLucro = 10
 
 // Cotacao é o preço usado no P/L. Sem Horario, a Fonte já diz a data.
 type Cotacao struct {
@@ -133,6 +144,10 @@ func Calcular(t cvm.Ticker, contas []cvm.Conta, comps []cvm.Composicao, cot Cota
 	r := Resultado{Ticker: t.Codigo, Nome: t.Nome, CNPJ: t.CNPJ, Financeira: !c.temChave("ebit")}
 
 	anos := c.periodosAnuais()
+	for _, a := range anos[max(0, len(anos)-AnosDeLucro):] {
+		v, _, ok := c.lucro(a.ini, a.fim)
+		r.LucrosAnuais = append(r.LucrosAnuais, LucroAno{Ano: a.fim.Year(), Valor: v, OK: ok})
+	}
 	if len(anos) > 5 {
 		anos = anos[len(anos)-5:]
 	}

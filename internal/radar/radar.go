@@ -90,15 +90,21 @@ func Avaliar(r indicadores.Resultado, lim Limites) Avaliacao {
 	}
 	av.HistoricoCurto = len(anuais) < 5
 
-	// 1. Lucro em todos os anos.
-	lucro := Criterio{Nome: "Lucro 5a"}
+	// 1. Lucro em todos os anos (até 10; sem a lista, os anos das colunas).
+	lucros := r.LucrosAnuais
+	if len(lucros) == 0 {
+		for _, c := range anuais {
+			v := c.Valores["lucro"]
+			lucros = append(lucros, indicadores.LucroAno{Valor: v.Numero, OK: v.OK})
+		}
+	}
+	lucro := Criterio{Nome: fmt.Sprintf("Lucro %da", indicadores.AnosDeLucro)}
 	prejuizos := 0
-	semDado := len(anuais) == 0
-	for _, c := range anuais {
-		v := c.Valores["lucro"]
-		if !v.OK {
+	semDado := len(lucros) == 0
+	for _, l := range lucros {
+		if !l.OK {
 			semDado = true
-		} else if v.Numero <= 0 {
+		} else if l.Valor <= 0 {
 			prejuizos++
 		}
 	}
@@ -108,7 +114,7 @@ func Avaliar(r indicadores.Resultado, lim Limites) Avaliacao {
 	case prejuizos > 0:
 		lucro.Valor = fmt.Sprintf("%d prej.", prejuizos)
 	default:
-		lucro.Valor = fmt.Sprintf("%d anos", len(anuais))
+		lucro.Valor = fmt.Sprintf("%d anos", len(lucros))
 		lucro.OK = true
 	}
 	av.adicionar(lucro)

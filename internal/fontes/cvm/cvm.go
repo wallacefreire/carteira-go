@@ -43,13 +43,15 @@ func (a Arquivo) Nome() string {
 // URL é o endereço do .zip no portal da CVM.
 func (a Arquivo) URL() string { return urlBase + a.Tipo + "/DADOS/" + a.Nome() }
 
-// Necessarios lista os arquivos para 5 anos de balanço + os 12 últimos meses:
-// DFP dos 6 últimos anos (o ano mais recente pode ainda não ter saído),
+// Necessarios lista os arquivos para os balanços + os 12 últimos meses:
+// DFP dos 10 últimos anos (o mais recente pode ainda não ter saído; os
+// indicadores usam 5 anos e o critério de lucro do radar, 10),
 // ITR do ano atual e do anterior, e o FCA dos dois anos.
 func Necessarios(hoje time.Time) []Arquivo {
 	y := hoje.Year()
 	var l []Arquivo
-	for a := y - 6; a <= y-1; a++ {
+	// DFP de 10 anos: o radar confere lucro em 10 anos (os indicadores usam 5).
+	for a := y - 10; a <= y-1; a++ {
 		l = append(l, Arquivo{"DFP", a})
 	}
 	return append(l, Arquivo{"ITR", y - 1}, Arquivo{"ITR", y}, Arquivo{"FCA", y - 1}, Arquivo{"FCA", y})
