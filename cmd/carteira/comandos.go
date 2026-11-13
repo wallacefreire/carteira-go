@@ -113,6 +113,11 @@ func (a *app) dadosPosicao(ctx context.Context) (dadosPosicao, error) {
 	if err != nil {
 		return d, err
 	}
+	// Operações marcadas como de terceiros ("carteira terceiros <ID>") também
+	// aparecem nesse bloco, somadas ao ativo de terceiros de mesmo código.
+	if err := a.somarOperacoesTerceiros(terceiros); err != nil {
+		return d, err
+	}
 	var abertos []string
 	var realizado float64
 	for t, p := range pos {
@@ -301,6 +306,37 @@ func (a *app) cotacoes(ctx context.Context, tickers []string) (map[string]armaze
 		notas = append(notas, fmt.Sprintf("%s: sem cotação (%v)", t, err))
 	}
 	return res, notas
+}
+
+// somarOperacoesTerceiros calcula a posição das operações marcadas como de
+// terceiros e soma ao mapa (o mesmo código pode já estar oculto inteiro).
+func (a *app) somarOperacoesTerceiros(terceiros map[string]*carteira.Posicao) error {
+	todas, err := a.banco.TodasOperacoes("")
+	if err != nil {
+		return err
+	}
+	var deles []carteira.Operacao
+	for _, op := range todas {
+		if op.Terceiros {
+			deles = append(deles, op)
+		}
+	}
+	if len(deles) == 0 {
+		return nil
+	}
+	pos, _ := carteira.CalcularPosicoes(deles)
+	for t, p := range pos {
+		if p.Quantidade <= 0 {
+			continue
+		}
+		if atual, ok := terceiros[t]; ok {
+			atual.Quantidade += p.Quantidade
+			atual.Custo += p.Custo
+			continue
+		}
+		terceiros[t] = p
+	}
+	return nil
 }
 
 // separarTerceiros tira das posições os ativos ocultos (de terceiros).
