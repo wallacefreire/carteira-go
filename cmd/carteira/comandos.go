@@ -92,9 +92,11 @@ type dadosPosicao struct {
 	Terceiros         []itemValor    `json:"terceiros"`
 	TotalTerceiros    string         `json:"totalTerceiros"`
 	Realizado         string         `json:"realizado"`
-	Proventos         string         `json:"proventos"`
-	Notas             []string       `json:"notas"`  // sobre as cotações
-	Avisos            []string       `json:"avisos"` // sobre as operações
+	Proventos         string         `json:"proventos"`      // total desde o primeiro
+	Proventos12m      string         `json:"proventos12m"`   // últimos 12 meses
+	ProventosDesde    string         `json:"proventosDesde"` // ano do primeiro
+	Notas             []string       `json:"notas"`          // sobre as cotações
+	Avisos            []string       `json:"avisos"`         // sobre as operações
 }
 
 func (a *app) dadosPosicao(ctx context.Context) (dadosPosicao, error) {
@@ -204,12 +206,26 @@ func (a *app) dadosPosicao(ctx context.Context) (dadosPosicao, error) {
 		d.TotalTerceiros = formato.Moeda(totalTerceiros)
 	}
 
-	proventos, err := a.banco.TotalProventos()
+	// O total desde o começo engana (quase tudo de ativos já vendidos): o
+	// número principal é o dos últimos 12 meses, e o total fica de rodapé.
+	provs, err := a.banco.Proventos()
 	if err != nil {
 		return d, err
 	}
+	var total12m, totalProv float64
+	inicio12m := a.agora().AddDate(-1, 0, 0)
+	for _, p := range provs {
+		totalProv += p.Valor
+		if p.Data.After(inicio12m) {
+			total12m += p.Valor
+		}
+	}
 	d.Realizado = formato.Moeda(realizado)
-	d.Proventos = formato.Moeda(proventos)
+	d.Proventos12m = formato.Moeda(total12m)
+	d.Proventos = formato.Moeda(totalProv)
+	if len(provs) > 0 {
+		d.ProventosDesde = strconv.Itoa(provs[0].Data.Year()) // Proventos() vem em ordem de data
+	}
 	return d, nil
 }
 
@@ -279,7 +295,11 @@ func (a *app) posicao(ctx context.Context) error {
 	}
 
 	fmt.Fprintf(a.saida, "\nResultado das vendas já feitas: R$ %s\n", d.Realizado)
-	fmt.Fprintf(a.saida, "Proventos recebidos: R$ %s (detalhe: carteira proventos · a receber: carteira agenda)\n", d.Proventos)
+	fmt.Fprintf(a.saida, "Proventos recebidos nos últimos 12 meses: R$ %s", d.Proventos12m)
+	if d.ProventosDesde != "" {
+		fmt.Fprintf(a.saida, " (R$ %s desde %s)", d.Proventos, d.ProventosDesde)
+	}
+	fmt.Fprintln(a.saida, "\n  detalhe: carteira proventos · a receber: carteira agenda")
 	imprimirLista(a.saida, "Cotações:", d.Notas)
 	imprimirLista(a.saida, "Confira:", d.Avisos)
 	return nil

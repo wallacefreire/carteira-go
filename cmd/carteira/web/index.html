@@ -231,7 +231,7 @@ async function abaCarteira() {
   h += `<div class="cards">
     <div class="card"><div class="rotulo">Valor da carteira</div><div class="valor">R$ ${esc(d.total)}</div></div>
     <div class="card"><div class="rotulo">Resultado (cotação − custo)</div><div class="valor ${cor(d.resultadoTotalNum)}">R$ ${esc(d.resultadoTotal)}</div><div class="sub ${cor(d.resultadoTotalNum)}">${esc(d.resultadoTotalPct)}</div></div>
-    <div class="card"><div class="rotulo">Proventos recebidos</div><div class="valor">R$ ${esc(d.proventos)}</div></div>
+    <div class="card"><div class="rotulo">Proventos (últimos 12 meses)</div><div class="valor">R$ ${esc(d.proventos12m)}</div>${d.proventosDesde ? `<div class="sub">R$ ${esc(d.proventos)} desde ${esc(d.proventosDesde)}</div>` : ""}</div>
     <div class="card"><div class="rotulo">Resultado das vendas já feitas</div><div class="valor">R$ ${esc(d.realizado)}</div></div>
   </div>`;
   h += `<section class="bloco"><h2>Posição <small>valores em R$ · teto por ativo ${esc(d.teto)}</small></h2><div class="rolagem"><table>
