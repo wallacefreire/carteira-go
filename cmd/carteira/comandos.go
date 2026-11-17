@@ -15,6 +15,7 @@ import (
 	"carteira/internal/armazenamento"
 	"carteira/internal/carteira"
 	"carteira/internal/fontes/b3"
+	"carteira/internal/fontes/bcb"
 	"carteira/internal/fontes/brapi"
 	"carteira/internal/fontes/coingecko"
 	"carteira/internal/fontes/tesouro"
@@ -37,6 +38,8 @@ type app struct {
 	dirDados      string
 	b3            *b3.Cliente
 	cripto        *coingecko.Cliente
+	bcb           *bcb.Cliente             // dólar oficial (PTAX)
+	dolares       map[string]bcb.Cotacao   // PTAX já lidas nesta execução
 	tesouro       map[string]tesouro.Preco // preços do Tesouro já lidos nesta execução
 	series        map[string]serie         // históricos já lidos nesta execução
 	eventosFalhos map[string]error         // empresas cuja busca de eventos falhou nesta execução
@@ -85,6 +88,7 @@ type dadosPosicao struct {
 	ResultadoTotalPct string         `json:"resultadoTotalPct"`
 	ResultadoTotalNum float64        `json:"resultadoTotalNum"`
 	Classes           []itemValor    `json:"classes"`
+	Dolar             []linhaDolar   `json:"dolar"` // ativos em dólar: parte do ativo e do câmbio
 	Terceiros         []itemValor    `json:"terceiros"`
 	TotalTerceiros    string         `json:"totalTerceiros"`
 	Realizado         string         `json:"realizado"`
@@ -183,6 +187,10 @@ func (a *app) dadosPosicao(ctx context.Context) (dadosPosicao, error) {
 		}
 	}
 	d.Classes = a.classes(linhas, total)
+	// Sem a PTAX do Banco Central a posição sai do mesmo jeito, só sem o bloco do dólar.
+	if d.Dolar, err = a.separarDolar(ctx, ops, linhas); err != nil {
+		d.Notas = append(d.Notas, "Dólar (PTAX do Banco Central): "+err.Error())
+	}
 
 	lt, totalTerceiros := carteira.Pesos(terceiros, precos)
 	for _, l := range lt {
@@ -246,6 +254,14 @@ func (a *app) posicao(ctx context.Context) error {
 		}
 		if err := tw.Flush(); err != nil {
 			return err
+		}
+	}
+	for _, l := range d.Dolar {
+		fmt.Fprintf(a.saida, "\n%s em dólar: custo US$ %s, vale US$ %s (%s); dólar %s nas compras, %s hoje (%s)\n",
+			l.Ticker, l.CustoUSD, l.ValorUSD, l.ResultadoUSDPct, l.DolarCompra, l.DolarHoje, l.CambioPct)
+		fmt.Fprintf(a.saida, "  Resultado R$ %s = %s do %s + %s do câmbio\n", l.Resultado, l.ParteAtivo, l.Ticker, l.ParteCambio)
+		for _, c := range l.Contas {
+			fmt.Fprintf(a.saida, "  · %s\n", c)
 		}
 	}
 	if len(d.Terceiros) > 0 {

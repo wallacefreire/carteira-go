@@ -249,6 +249,19 @@ async function abaCarteira() {
     h += `<section class="bloco"><h2>Por classe</h2><table><tbody>${d.classes.map((c) => `<tr><td>${esc(c.nome)}</td><td>${esc(c.valor)}</td><td>${esc(c.pct)}</td></tr>` +
       (c.itens || []).map((i) => `<tr class="subitem"><td>${esc(i.nome)}</td><td>${esc(i.valor)}</td><td>${esc(i.pct)}</td></tr>`).join("")).join("")}</tbody></table></section>`;
   }
+  for (const x of d.dolar || []) {
+    h += `<section class="bloco"><h2>${esc(x.ticker)} em dólar <small>quanto do resultado veio do ${esc(x.ticker)} e quanto do câmbio · dólar oficial (PTAX do Banco Central)</small></h2>
+      <table><thead><tr><th></th><th>Nas compras</th><th>Hoje</th><th>Variação</th></tr></thead><tbody>
+      <tr><td>${esc(x.ticker)} em US$</td><td>US$ ${esc(x.custoUSD)}</td><td>US$ ${esc(x.valorUSD)}</td><td class="${cor(x.parteAtivoNum)}">${esc(x.resultadoUSDPct)}</td></tr>
+      <tr><td>Dólar (R$)</td><td>${esc(x.dolarCompra)} <small>médio</small></td><td>${esc(x.dolarHoje)} <small>${esc(x.diaDolarHoje)}</small></td><td class="${cor(x.parteCambioNum)}">${esc(x.cambioPct)}</td></tr>
+      </tbody></table>
+      <table style="margin-top:12px"><tbody>
+      <tr><td>Do ${esc(x.ticker)} (preço em dólar)</td><td class="${cor(x.parteAtivoNum)}">R$ ${esc(x.parteAtivo)}</td></tr>
+      <tr><td>Do câmbio</td><td class="${cor(x.parteCambioNum)}">R$ ${esc(x.parteCambio)}</td></tr>
+      <tr class="total"><td>Resultado em R$</td><td class="${cor(x.resultadoNum)}">R$ ${esc(x.resultado)}</td></tr>
+      </tbody></table>
+      <details style="margin-top:10px"><summary>Memória de cálculo</summary><ul>${x.contas.map((c) => `<li>${esc(c)}</li>`).join("")}</ul></details></section>`;
+  }
   if (d.terceiros && d.terceiros.length) {
     h += `<section class="bloco"><h2>De terceiros <small>fora do total, dos pesos e da correlação</small></h2><table><tbody>
       ${d.terceiros.map((t) => `<tr><td>${esc(t.nome)}</td><td>${esc(t.qtd)}</td><td>${esc(t.valor)}</td></tr>`).join("")}

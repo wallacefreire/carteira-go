@@ -12,6 +12,7 @@ import (
 	"carteira/internal/armazenamento"
 	"carteira/internal/carteira"
 	"carteira/internal/fontes/b3"
+	"carteira/internal/fontes/bcb"
 	"carteira/internal/fontes/brapi"
 	"carteira/internal/fontes/coingecko"
 )
@@ -111,6 +112,7 @@ func executar(args []string, saida io.Writer) error {
 		dirDados: filepath.Dir(caminho),
 		b3:       b3.Novo(),
 		cripto:   coingecko.Novo(),
+		bcb:      bcb.Novo(),
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()

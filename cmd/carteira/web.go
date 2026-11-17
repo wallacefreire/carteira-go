@@ -99,7 +99,7 @@ func (s *servidor) pagina(w http.ResponseWriter, r *http.Request) {
 // Tesouro) são de uma execução só, como no terminal.
 func (s *servidor) novoApp() *app {
 	b := s.base
-	return &app{banco: b.banco, brapi: b.brapi, saida: os.Stdout, agora: time.Now, dirDados: b.dirDados, b3: b.b3, cripto: b.cripto}
+	return &app{banco: b.banco, brapi: b.brapi, saida: os.Stdout, agora: time.Now, dirDados: b.dirDados, b3: b.b3, cripto: b.cripto, bcb: b.bcb}
 }
 
 type tratador func(ctx context.Context, a *app, r *http.Request) (any, error)
