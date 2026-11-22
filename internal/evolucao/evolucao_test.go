@@ -47,7 +47,7 @@ func TestCalcularAporteNaoEhGanho(t *testing.T) {
 			t.Errorf("cota dia %d = %v, esperado %v", i, c.Cota[i], v)
 		}
 	}
-	if c.Patrimonio[3] != 220 || c.Investido[3] != 210 {
+	if c.Patrimonio[3] != 220 || c.Investido[3] != 210 || c.Proventos[3] != 4 || c.Proventos[2] != 0 {
 		t.Errorf("patrimônio %v, investido %v", c.Patrimonio[3], c.Investido[3])
 	}
 	if len(c.SemPreco) != 0 {
@@ -117,5 +117,15 @@ func TestPeriodosERetorno(t *testing.T) {
 	r, ate, ok := Retorno(idx, ps[1])
 	if !ok || ate != 3 || !perto(r, 0.2) {
 		t.Errorf("retorno %v até %d (%v)", r, ate, ok)
+	}
+}
+
+func TestRecomeco(t *testing.T) {
+	pat := []float64{10, 12, 0, 0, 0, 5, 0, 7, 8}
+	if got := Recomeco(pat, 3); got != 4 { // volta no índice 5; base 4
+		t.Errorf("recomeço %d", got)
+	}
+	if got := Recomeco(pat, 4); got != -1 {
+		t.Errorf("sem intervalo longo: %d", got)
 	}
 }

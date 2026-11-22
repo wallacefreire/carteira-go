@@ -22,6 +22,10 @@ import (
 	"carteira/internal/risco"
 )
 
+// Carteira vazia por pelo menos isso (uns 3 meses) e depois de novo com
+// ativos: a volta vira o período "Desde a volta".
+const pregoesParaRecomeco = 60
+
 // As séries do Banco Central são baixadas de novo depois disso.
 const validadeBCB = 12 * time.Hour
 
@@ -64,6 +68,9 @@ type dadosEvolucao struct {
 	Series          []serieEvolucao      `json:"series"`
 	Patrimonio      []float64            `json:"patrimonio"`
 	Investido       []float64            `json:"investido"`
+	Proventos       []float64            `json:"proventos"` // recebidos, acumulado
+	Recomeco        int                  `json:"recomeco"`  // índice da base do período "Desde a volta"; -1 sem volta
+	RecomecoData    string               `json:"recomecoData"`
 	PatrimonioAtual string               `json:"patrimonioAtual"`
 	InvestidoAtual  string               `json:"investidoAtual"`
 	Rentabilidade   []linhaRentabilidade `json:"rentabilidade"`
@@ -145,11 +152,20 @@ func (a *app) dadosEvolucao(ctx context.Context) (dadosEvolucao, error) {
 	for i := range c.Dias {
 		d.Patrimonio = append(d.Patrimonio, math.Round(c.Patrimonio[i]*100)/100)
 		d.Investido = append(d.Investido, math.Round(c.Investido[i]*100)/100)
+		d.Proventos = append(d.Proventos, math.Round(c.Proventos[i]*100)/100)
 	}
 	d.Inicio, d.Ate = formato.Data(c.Dias[0]), formato.Data(c.Dias[n-1])
 	d.PatrimonioAtual, d.InvestidoAtual = formato.Moeda(c.Patrimonio[n-1]), formato.Moeda(c.Investido[n-1])
 
-	for _, p := range evolucao.Periodos(c.Dias) {
+	periodos := evolucao.Periodos(c.Dias)
+	d.Recomeco = evolucao.Recomeco(c.Patrimonio, pregoesParaRecomeco)
+	if d.Recomeco >= 0 {
+		d.RecomecoData = formato.Data(c.Dias[d.Recomeco+1])
+		// Logo depois dos 12 meses, antes do "Desde o início".
+		volta := evolucao.Periodo{Rotulo: "Desde a volta (" + d.RecomecoData + ")", Ini: d.Recomeco, Fim: n - 1}
+		periodos = slices.Insert(periodos, len(periodos)-1, volta)
+	}
+	for _, p := range periodos {
 		l := linhaRentabilidade{Periodo: p.Rotulo, Parcial: p.Parcial}
 		for _, idx := range indices {
 			r, ate, ok := evolucao.Retorno(idx, p)
@@ -347,6 +363,14 @@ func (a *app) evolucao(ctx context.Context) error {
 		return err
 	}
 	fmt.Fprintf(a.saida, "* ano incompleto\n\nPatrimônio em %s: R$ %s · compras − vendas desde o início: R$ %s\n", d.Ate, d.PatrimonioAtual, d.InvestidoAtual)
+	if i := d.Recomeco; i >= 0 {
+		n := len(d.Patrimonio) - 1
+		aportes := d.Investido[n] - d.Investido[i]
+		provs := d.Proventos[n] - d.Proventos[i]
+		fmt.Fprintf(a.saida, "Desde a volta (%s): entraram R$ %s, vale R$ %s e pagou R$ %s de proventos: resultado de R$ %s\n",
+			d.RecomecoData, formato.Moeda(aportes), formato.Moeda(d.Patrimonio[n]), formato.Moeda(provs),
+			formato.Moeda(d.Patrimonio[n]-d.Patrimonio[i]-aportes+provs))
+	}
 	fmt.Fprintln(a.saida, "\nFontes:")
 	for _, s := range d.Series {
 		fmt.Fprintf(a.saida, "  %s: %s\n", s.Nome, s.Fonte)

@@ -383,14 +383,18 @@ function ligarVisoes(d) {
 // ---------- Evolução ----------
 // Cor fixa por série (nunca pela posição na lista): desligar uma não repinta as outras.
 const CORES_EVOLUCAO = { carteira: "var(--serie-1)", ibov: "var(--serie-2)", cdi: "var(--serie-3)", ipca: "var(--serie-4)", sp500: "var(--serie-5)", ifix: "var(--serie-6)" };
-const PERIODOS = [["12m", "12 meses"], ["ano", "No ano"], ["2a", "2 anos"], ["5a", "5 anos"], ["tudo", "Tudo"]];
-let periodoEvolucao = "12m";
+const PERIODOS = [["volta", "Desde a volta"], ["12m", "12 meses"], ["ano", "No ano"], ["2a", "2 anos"], ["5a", "5 anos"], ["tudo", "Tudo"]];
+let periodoEvolucao = "volta";
+let modoEvolucao = "pct"; // "pct": rentabilidade em %; "rs": patrimônio em R$
 let seriesLigadas = new Set(["carteira", "ibov", "cdi"]);
 try { const s = JSON.parse(localStorage.getItem("seriesEvolucao")); if (Array.isArray(s) && s.length) seriesLigadas = new Set(s); } catch {}
 try { const p = localStorage.getItem("periodoEvolucao"); if (PERIODOS.some(([v]) => v === p)) periodoEvolucao = p; } catch {}
+try { if (localStorage.getItem("modoEvolucao") === "rs") modoEvolucao = "rs"; } catch {}
 const pct1 = (f) => (f > 0 ? "+" : "") + (f * 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "%";
+const reais = (v) => (v < 0 ? "−R$ " : "R$ ") + moedaBR(Math.abs(v));
 const MESES_CURTOS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const dataBR = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+const guardar = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 
 async function abaEvolucao() {
   if (!cache.evolucao) {
@@ -401,59 +405,78 @@ async function abaEvolucao() {
   const d = cache.evolucao;
   if (d.vazia) { $("#conteudo").innerHTML = `<section class="bloco"><p>Sem operações para calcular a evolução.</p></section>`; return; }
 
-  const ini = inicioPeriodo(d, periodoEvolucao);
-  const ult = d.datas.length - 1;
-  const ret = (s) => retornoSerie(s.valores, ini, ult);
+  const periodos = PERIODOS.filter(([v]) => v !== "volta" || d.recomeco >= 0)
+    .map(([v, r]) => [v, v === "volta" ? `${r} (${MESES_CURTOS[Number(d.recomecoData.slice(3, 5)) - 1]}/${d.recomecoData.slice(8)})` : r]);
+  if (!periodos.some(([v]) => v === periodoEvolucao)) periodoEvolucao = "12m";
+  const ini = inicioPeriodo(d, periodoEvolucao), ult = d.datas.length - 1;
   const todasLigadas = d.series.every((s) => seriesLigadas.has(s.chave));
+  const rs = modoEvolucao === "rs";
+
   let h = `<div class="controles-evolucao">
-    <div class="visoes" role="group" aria-label="Período">${PERIODOS.map(([v, r]) => `<button data-periodo="${v}" aria-pressed="${periodoEvolucao === v}">${r}</button>`).join("")}</div>
+    <div class="visoes" role="group" aria-label="Período">${periodos.map(([v, r]) => `<button data-periodo="${v}" aria-pressed="${periodoEvolucao === v}">${esc(r)}</button>`).join("")}</div>
+    <div class="visoes" role="group" aria-label="Mostrar em"><button data-modo="pct" aria-pressed="${!rs}" title="Rentabilidade acumulada">%</button><button data-modo="rs" aria-pressed="${rs}" title="Patrimônio: quanto você teria em cada um">R$</button></div>
     <div class="chips" role="group" aria-label="Linhas do gráfico">${d.series.map((s) => `<button data-serie="${s.chave}" aria-pressed="${seriesLigadas.has(s.chave)}" title="${esc(s.fonte)}"><i style="background:${CORES_EVOLUCAO[s.chave]}"></i>${esc(s.nome)}</button>`).join("")}
       <button data-serie="*" title="${todasLigadas ? "Deixa só a carteira" : "Liga todas as linhas"}">${todasLigadas ? "Só a carteira" : "Todas"}</button></div>
   </div>`;
-  const rc = ret(d.series[0]);
-  h += `<div class="cards">
-    <div class="card"><div class="rotulo">Carteira</div><div class="valor ${cor(rc ?? 0)}">${rc == null ? "-" : pct1(rc)}</div><div class="sub">${esc(dataBR(d.datas[ini]))} a ${esc(d.ate)}</div></div>
-    ${d.series.slice(1).filter((s) => seriesLigadas.has(s.chave)).map((s) => {
-      const r = ret(s);
-      const dif = r != null && rc != null ? `<div class="sub">carteira ${rc >= r ? "acima" : "abaixo"} em ${(Math.abs(rc - r) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} p.p.</div>` : "";
-      return `<div class="card"><div class="rotulo">${esc(s.nome)}</div><div class="valor">${r == null ? "-" : pct1(r)}</div>${dif}</div>`;
-    }).join("")}
-  </div>`;
-  const patIni = d.patrimonio[ini], pat = d.patrimonio[ult], aportes = d.investido[ult] - d.investido[ini];
-  h += `<section class="bloco"><h2>Rentabilidade <small>acumulada no período · método de cotas: aporte não conta como ganho</small></h2><div class="linha-grafico" id="graf-rent"></div></section>`;
-  h += `<section class="bloco"><h2>Patrimônio <small>em R$ · no período: começou com ${esc(moedaBR(patIni))}, entraram ${esc(moedaBR(aportes))} (compras − vendas) e vale ${esc(moedaBR(pat))} · a linha tracejada é quanto valeria sem nenhum rendimento</small></h2><div class="linha-grafico" id="graf-pat"></div></section>`;
 
-  h += `<section class="bloco"><h2>Por ano <small>* ano incompleto</small></h2><div class="rolagem"><table><thead><tr><th></th>${d.series.map((s, i) => `<th class="${i === 0 ? "destaque" : ""}">${esc(s.nome)}</th>`).join("")}</tr></thead><tbody>
+  // Números do período: rentabilidade (cota) e o que aconteceu com o dinheiro.
+  const patIni = d.patrimonio[ini], pat = d.patrimonio[ult];
+  const aportes = d.investido[ult] - d.investido[ini], provs = d.proventos[ult] - d.proventos[ini];
+  const resultado = pat - patIni - aportes + provs;
+  const ultimoDe = (v) => { let i = v.length - 1; while (i >= 0 && v[i] == null) i--; return i < 0 ? null : v[i]; };
+  const cards = d.series.filter((s, i) => i === 0 || seriesLigadas.has(s.chave)).map((s, i) => {
+    const r = retornoSerie(s.valores, ini, ult);
+    if (i === 0) {
+      return `<div class="card"><div class="rotulo">Carteira · ${esc(periodoEvolucao === "volta" ? d.recomecoData : dataBR(d.datas[ini]))} a ${esc(d.ate)}</div>
+        <div class="valor ${rs ? "" : cor(r ?? 0)}">${rs ? reais(pat) : r == null ? "-" : pct1(r)}</div>
+        <div class="sub">${rs ? `entraram ${reais(aportes)}${provs ? ` · proventos ${reais(provs)}` : ""} · ` : ""}resultado <span class="${cor(resultado)}">${reais(resultado)}</span>${rs && r != null ? ` · ${pct1(r)}` : ""}</div></div>`;
+    }
+    const rc = retornoSerie(d.series[0].valores, ini, ult);
+    if (rs) {
+      const v = ultimoDe(simular(d, s.valores, ini));
+      const dif = v == null ? "" : `<div class="sub">carteira ${pat >= v ? "acima" : "abaixo"} em ${reais(Math.abs(pat - v))}</div>`;
+      return `<div class="card"><div class="rotulo">Mesmo dinheiro no ${esc(s.nome)}</div><div class="valor">${v == null ? "-" : reais(v)}</div>${dif}</div>`;
+    }
+    const dif = r != null && rc != null ? `<div class="sub">carteira ${rc >= r ? "acima" : "abaixo"} em ${(Math.abs(rc - r) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} p.p.</div>` : "";
+    return `<div class="card"><div class="rotulo">${esc(s.nome)}</div><div class="valor">${r == null ? "-" : pct1(r)}</div>${dif}</div>`;
+  });
+  h += `<div class="cards">${cards.join("")}</div>`;
+  h += rs
+    ? `<section class="bloco"><h2>Patrimônio <small>em R$ · a carteira e quanto você teria pondo o mesmo dinheiro, nos mesmos dias, em cada índice · tracejado: sem nenhum rendimento</small></h2><div class="linha-grafico" id="graf-evolucao"></div></section>`
+    : `<section class="bloco"><h2>Rentabilidade <small>acumulada no período · método de cotas: aporte não conta como ganho</small></h2><div class="linha-grafico" id="graf-evolucao"></div></section>`;
+
+  h += `<section class="bloco"><h2>Por período <small>rentabilidade · * ano incompleto</small></h2><div class="rolagem"><table><thead><tr><th></th>${d.series.map((s, i) => `<th class="${i === 0 ? "destaque" : ""}">${esc(s.nome)}</th>`).join("")}</tr></thead><tbody>
     ${d.rentabilidade.map((l) => `<tr><td>${esc(l.periodo)}${l.parcial ? "*" : ""}</td>${l.valores.map((v, i) => `<td class="${i === 0 ? "destaque " : ""}${l.nums[i] == null ? "sem" : cor(l.nums[i])}">${esc(v)}</td>`).join("")}</tr>`).join("")}
     </tbody></table></div>
     <details style="margin-top:12px"><summary style="cursor:pointer">Como é calculado</summary>
       <p class="legenda">A carteira segue o <b>método de cotas</b>, o mesmo dos fundos. No primeiro dia ela vale 1 cota, e o rendimento de cada pregão é (valor de hoje − dinheiro que entrou hoje) ÷ valor de ontem, com "dinheiro que entrou" = compras − vendas − proventos recebidos. Assim aporte não vira ganho, e provento conta como rendimento. Ativos e operações de terceiros ficam de fora. As datas são as do extrato da B3, que traz a liquidação (D+1), não o dia do pregão.</p>
+      <p class="legenda">A % mede a qualidade das escolhas: cada dia pesa igual, tenha a carteira R$ 100 ou R$ 2.000. O resultado em R$ mostra o que aconteceu com o seu dinheiro, e pesa mais os dias em que havia mais dinheiro. Por isso os dois podem contar histórias diferentes.</p>
+      <p class="legenda">No modo R$, cada índice recebe as mesmas entradas e saídas de dinheiro da carteira (compras − vendas − proventos), nos mesmos dias, e rende como o índice.</p>
       <ul class="notas">${d.series.map((s) => `<li><b>${esc(s.nome)}</b>: ${esc(s.fonte)}</li>`).join("")}</ul>
       <p class="legenda">Os ETFs cobram taxa de administração, então rendem um pouco abaixo do índice. O IPCA sai por volta do dia 10 do mês seguinte, e a linha para no último mês publicado.</p></details>
     ${lista("Observações", d.notas)}</section>`;
   $("#conteudo").innerHTML = h;
 
-  document.querySelectorAll("[data-periodo]").forEach((b) => b.onclick = () => {
-    periodoEvolucao = b.dataset.periodo;
-    try { localStorage.setItem("periodoEvolucao", periodoEvolucao); } catch {}
-    abaEvolucao();
-  });
+  document.querySelectorAll("[data-periodo]").forEach((b) => b.onclick = () => { periodoEvolucao = b.dataset.periodo; guardar("periodoEvolucao", periodoEvolucao); abaEvolucao(); });
+  document.querySelectorAll("[data-modo]").forEach((b) => b.onclick = () => { modoEvolucao = b.dataset.modo; guardar("modoEvolucao", modoEvolucao); abaEvolucao(); });
   document.querySelectorAll("[data-serie]").forEach((b) => b.onclick = () => {
     const k = b.dataset.serie;
     if (k === "*") seriesLigadas = todasLigadas ? new Set(["carteira"]) : new Set(d.series.map((s) => s.chave));
     else if (seriesLigadas.has(k)) seriesLigadas.delete(k);
     else seriesLigadas.add(k);
-    try { localStorage.setItem("seriesEvolucao", JSON.stringify([...seriesLigadas])); } catch {}
+    guardar("seriesEvolucao", JSON.stringify([...seriesLigadas]));
     abaEvolucao();
   });
   desenharEvolucao(d, ini);
 }
 
 // inicioPeriodo: índice do pregão base (o retorno conta a partir do fechamento dele).
-// "No ano" usa o último pregão do ano anterior, como a tabela por ano.
+// "No ano" usa o último pregão do ano anterior, como a tabela; "Desde a volta", o
+// último pregão com a carteira vazia antes de recomeçar.
 function inicioPeriodo(d, p) {
   const n = d.datas.length, ult = d.datas[n - 1];
   if (p === "tudo") return 0;
+  if (p === "volta") return Math.max(0, d.recomeco);
   let corte;
   if (p === "ano") corte = `${Number(ult.slice(0, 4)) - 1}-12-31`;
   else corte = `${Number(ult.slice(0, 4)) - { "12m": 1, "2a": 2, "5a": 5 }[p]}${ult.slice(4)}`;
@@ -466,6 +489,21 @@ function retornoSerie(v, ini, fim) {
   let a = ini; while (a <= fim && v[a] == null) a++;
   let b = fim; while (b > a && v[b] == null) b--;
   return b > a && v[a] ? v[b] / v[a] - 1 : null;
+}
+// simular: quanto valeria, desde ini, pondo no índice o patrimônio inicial e as
+// mesmas entradas e saídas da carteira. Com a cota da carteira dá o próprio patrimônio.
+function simular(d, v, ini) {
+  const res = [];
+  let valor = d.patrimonio[ini], anterior = v[ini];
+  for (let i = ini; i < v.length; i++) {
+    if (i > ini) {
+      if (v[i] != null && anterior != null) valor *= v[i] / anterior;
+      if (v[i] != null) anterior = v[i];
+      valor += d.investido[i] - d.investido[i - 1] - (d.proventos[i] - d.proventos[i - 1]);
+    }
+    res.push(v[i] == null || anterior == null ? null : valor);
+  }
+  return res;
 }
 
 // marcasEixo: passo "redondo" (1, 2, 2,5, 5 × 10^k) para ter umas 5 marcas.
@@ -481,19 +519,24 @@ function marcasEixo(min, max, qtd) {
 function desenharEvolucao(d, ini) {
   const fim = d.datas.length - 1;
   const datas = d.datas.slice(ini);
+  const ligadas = d.series.filter((s) => seriesLigadas.has(s.chave));
+  if (modoEvolucao === "rs") {
+    // Patrimônio: carteira, cada índice com o mesmo dinheiro e a linha sem rendimento.
+    const linhas = ligadas.map((s) => ({ nome: s.chave === "carteira" ? "Carteira" : s.nome, cor: CORES_EVOLUCAO[s.chave], principal: s.chave === "carteira",
+      v: s.chave === "carteira" ? d.patrimonio.slice(ini) : simular(d, s.valores, ini) }));
+    linhas.push({ nome: "Sem rendimento", cor: "var(--suave)", tracejado: true,
+      v: d.investido.slice(ini).map((x, k) => d.patrimonio[ini] + x - d.investido[ini] - (d.proventos[ini + k] - d.proventos[ini])) });
+    graficoLinhas($("#graf-evolucao"), datas, linhas, { pct: false, zero: true, rotulos: linhas.length <= 5 });
+    return;
+  }
   // Rentabilidade: cada série rebaseada em 0% no começo do período.
-  const linhas = d.series.filter((s) => seriesLigadas.has(s.chave)).map((s) => {
+  const linhas = ligadas.map((s) => {
     let a = ini; while (a <= fim && s.valores[a] == null) a++;
     const base = s.valores[a];
     return { nome: s.nome, cor: CORES_EVOLUCAO[s.chave], principal: s.chave === "carteira",
       v: s.valores.slice(ini).map((x) => (x == null || !base ? null : x / base - 1)) };
   });
-  graficoLinhas($("#graf-rent"), datas, linhas, { pct: true, zero: true, rotulos: linhas.length <= 4 });
-  graficoLinhas($("#graf-pat"), datas, [
-    { nome: "Patrimônio", cor: "var(--serie-1)", principal: true, v: d.patrimonio.slice(ini) },
-    // Quanto haveria se nada tivesse rendido: o patrimônio do começo mais o que entrou (compras − vendas).
-    { nome: "Sem rendimento", cor: "var(--suave)", tracejado: true, v: d.investido.slice(ini).map((x) => d.patrimonio[ini] + x - d.investido[ini]) },
-  ], { pct: false, zero: true, rotulos: true });
+  graficoLinhas($("#graf-evolucao"), datas, linhas, { pct: true, zero: true, rotulos: linhas.length <= 4 });
 }
 
 // graficoLinhas desenha linhas em SVG: eixo de datas, marcas no eixo Y,
@@ -502,7 +545,7 @@ function graficoLinhas(el, datas, linhas, op) {
   if (!el) return;
   const fmt = op.pct ? pct1 : (v) => "R$ " + moedaBR(v);
   const fmtEixo = op.pct
-    ? (v) => (v * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + "%"
+    ? (v) => (Math.abs(v) < 1e-12 ? 0 : v * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + "%"
     : (v) => (Math.abs(v) >= 1000 ? (v / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " mil" : v.toLocaleString("pt-BR"));
   if (!linhas.length) { el.innerHTML = `<p class="legenda">Ligue ao menos uma linha nos botões acima.</p>`; return; }
   const W = Math.max(280, el.clientWidth), estreito = W < 560;

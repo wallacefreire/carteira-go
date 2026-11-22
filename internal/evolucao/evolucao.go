@@ -39,6 +39,7 @@ type Carteira struct {
 	Cota       []float64 // 1 no primeiro dia
 	Patrimonio []float64 // valor de mercado no fim do dia
 	Investido  []float64 // compras − vendas, acumulado
+	Proventos  []float64 // proventos recebidos, acumulado
 	// SemPreco são os ativos que, em algum dia, ficaram sem preço de mercado
 	// recente e foram avaliados pelo preço da última operação (ou pelo preço médio).
 	SemPreco []string
@@ -84,11 +85,12 @@ func Calcular(e Entrada) Carteira {
 	semPreco := map[string]bool{}
 	var aplicadas []carteira.Operacao
 	var pos map[string]*carteira.Posicao
-	cota, investido, ontem := 1.0, 0.0, 0.0
+	cota, investido, recebido, ontem := 1.0, 0.0, 0.0, 0.0
 
 	for i := inicio; i < n; i++ {
 		d := Dia(e.Dias[i])
 		fluxo := -proventos[i]
+		recebido += proventos[i]
 		if ops := opsDia[i]; len(ops) > 0 {
 			for _, op := range ops {
 				switch op.Tipo {
@@ -151,6 +153,7 @@ func Calcular(e Entrada) Carteira {
 		c.Cota = append(c.Cota, cota)
 		c.Patrimonio = append(c.Patrimonio, valor)
 		c.Investido = append(c.Investido, investido)
+		c.Proventos = append(c.Proventos, recebido)
 		ontem = valor
 	}
 	for t := range semPreco {
@@ -301,4 +304,22 @@ func Retorno(idx []float64, p Periodo) (r float64, ate int, ok bool) {
 		return 0, 0, false
 	}
 	return idx[fim]/idx[ini] - 1, fim, true
+}
+
+// Recomeco acha a volta depois do último intervalo de pelo menos minZerado
+// pregões com a carteira vazia e devolve o índice do pregão anterior à volta
+// (a base do retorno, para contar o primeiro dia). Sem intervalo assim: -1.
+func Recomeco(patrimonio []float64, minZerado int) int {
+	zerado, volta := 0, -1
+	for i, v := range patrimonio {
+		if v > 0 {
+			if zerado >= minZerado && i > 0 {
+				volta = i - 1
+			}
+			zerado = 0
+			continue
+		}
+		zerado++
+	}
+	return volta
 }
