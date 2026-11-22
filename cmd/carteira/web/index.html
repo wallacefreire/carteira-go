@@ -429,7 +429,7 @@ async function abaEvolucao() {
     if (i === 0) {
       return `<div class="card"><div class="rotulo">Carteira · ${esc(periodoEvolucao === "volta" ? d.recomecoData : dataBR(d.datas[ini]))} a ${esc(d.ate)}</div>
         <div class="valor ${rs ? "" : cor(r ?? 0)}">${rs ? reais(pat) : r == null ? "-" : pct1(r)}</div>
-        <div class="sub">${rs ? `entraram ${reais(aportes)}${provs ? ` · proventos ${reais(provs)}` : ""} · ` : ""}resultado <span class="${cor(resultado)}">${reais(resultado)}</span>${rs && r != null ? ` · ${pct1(r)}` : ""}</div></div>`;
+        <div class="sub">${rs ? `entraram ${reais(aportes)}${provs ? ` · proventos ${reais(provs)}` : ""} · ` : ""}resultado <span class="${cor(resultado)}">${reais(resultado)}</span>${rs && r != null ? ` · rentabilidade ${pct1(r)}` : ""}</div></div>`;
     }
     const rc = retornoSerie(d.series[0].valores, ini, ult);
     if (rs) {
