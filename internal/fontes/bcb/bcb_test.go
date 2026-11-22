@@ -49,3 +49,27 @@ func TestDolarSemCotacao(t *testing.T) {
 		t.Fatal("devia dar erro sem cotação")
 	}
 }
+
+func TestSerie(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/bcdata.sgs.12/dados" {
+			t.Errorf("caminho %q", r.URL.Path)
+		}
+		if q := r.URL.Query(); q.Get("dataInicial") != "01/11/2026" || q.Get("dataFinal") != "05/11/2026" {
+			t.Errorf("datas %q", r.URL.RawQuery)
+		}
+		// Resposta real (22/11/2026), encurtada.
+		w.Write([]byte(`[{"data":"03/11/2026","valor":"0.050788"},{"data":"04/11/2026","valor":"0.050788"}]`))
+	}))
+	defer srv.Close()
+
+	c := Novo()
+	c.URLSGS = srv.URL + "/bcdata.sgs.%d/dados"
+	vs, err := c.Serie(context.Background(), SerieCDI, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 5, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vs) != 2 || vs[0].Valor != 0.050788 || vs[1].Data.Format("02/01/2006") != "04/11/2026" {
+		t.Errorf("série %+v", vs)
+	}
+}

@@ -23,6 +23,7 @@ go run ./cmd/carteira explicar SOJA3 pl
 go run ./cmd/carteira precos               # baixa de novo o COTAHIST do ano atual
 go run ./cmd/carteira proventos [ANO]
 go run ./cmd/carteira agenda
+go run ./cmd/carteira evolucao            # rentabilidade por ano x Ibovespa, CDI, IPCA, S&P 500, IFIX
 go run ./cmd/carteira radar [todas]
 go run ./cmd/carteira filtro [CRITÉRIO VALOR]
 go run ./cmd/carteira web                  # tela em http://localhost:8080
@@ -41,6 +42,8 @@ go run ./cmd/carteira web                  # tela em http://localhost:8080
 - `cmd/carteira/precos.go`: histórico da B3 e correlação; `proventos.go`: cotação por tipo de ativo, classes, `proventos` e `agenda`
 - `internal/radar/`: avaliação do filtro (✓/✗ por critério); `cmd/carteira/radar.go`: comandos radar e filtro
 - `internal/fontes/baixar/`: download para arquivo temporário (usado por CVM e B3)
+- `internal/evolucao/`: método de cotas da carteira, índices (preço, CDI, IPCA) e períodos; `cmd/carteira/evolucao.go` busca os dados
+- `internal/fontes/bcb/`: PTAX (Olinda) e séries do SGS (`sgs.go`: CDI 12, IPCA 433)
 - `internal/risco/`: ajuste de preços, retornos, beta, volatilidade e correlação
 - `internal/indicadores/`: cálculo dos indicadores com memória (`Valor.Partes`); `risco.go` faz beta, volatilidade e correlação
 - `internal/armazenamento/`: SQLite (`modernc.org/sqlite`, sem CGO)
@@ -67,6 +70,7 @@ go run ./cmd/carteira web                  # tela em http://localhost:8080
 - **Tesouro (Fase 3):** vem do extrato da B3 como Compra/Venda com o nome do título ("Tesouro Selic 2031"), que é o próprio código do ativo. Preço = PU de venda mais recente do CSV do Tesouro Transparente (~15 MB, baixado a cada 12 h em `dirDados/tesouro`). O extrato arredonda a quantidade para 0,01: o valor pode diferir do da corretora (corrigir com `carteira ajuste`).
 - **BTC:** só lançamento manual (`carteira compra BTC …`); preço em reais pela CoinGecko. A corretora cobra a taxa em BTC (0,1%): lance a quantidade **recebida** e o preço = valor pago ÷ quantidade recebida (a taxa entra no custo). Desde 16/11/2026 a quantidade lançada bate com o saldo da corretora. No PowerShell, número com vírgula vai **entre aspas** (`"0,0005"`): sem aspas vira lista e a quantidade entra errada.
 - **Ativo em dólar (BTC):** a posição separa o resultado em parte do ativo e parte do câmbio (`cmd/carteira/dolar.go`). Cada operação vira dólar pela **PTAX de venda** do dia (Banco Central, API Olinda; dia sem PTAX usa o último dia útil antes; dia passado fica na config `ptax_AAAA-MM-DD`). Custo em US$ pelo mesmo preço médio; dólar médio = custo R$ ÷ custo US$; valor em US$ = valor R$ ÷ PTAX de hoje. Parte do ativo = (valor US$ − custo US$) × dólar médio; parte do câmbio = valor US$ × (dólar hoje − dólar médio). As duas somam o resultado em R$. É só informação: a base dos cálculos continua em reais.
+- **Evolução (22/11/2026):** rentabilidade pelo **método de cotas** (rendimento do dia = (valor − (compras − vendas − proventos)) ÷ valor de ontem), sem ativos ocultos nem operações de terceiros. Calendário = pregões do BOVA11; operação em dia sem pregão entra no seguinte. Preço diário: COTAHIST sem ajuste (bolsa), PU de venda do CSV do Tesouro Transparente, CoinGecko (BTC, até 365 dias); sem preço (BDRs como BABA34 e BERK34 não estão no COTAHIST) vale o da última operação. Comparações: Ibovespa = BOVA11, S&P 500 em reais = IVVB11 (inclui o dólar; Wallace preferiu assim), IFIX = XFIX11, todos ajustados por proventos; CDI (SGS 12) e IPCA (SGS 433, distribuído pelos dias do mês, para no último mês publicado) guardados na config `sgs_<código>` por 12 h. Datas do extrato são de liquidação (D+1). Na tela: aba Evolução com período, linhas liga/desliga (lembradas no navegador), patrimônio × "sem rendimento" e tabela por ano.
 - O teto por ativo **não vale para o Tesouro**. Indicadores e correlação usam só ativos da bolsa.
 - **Proventos recebidos** vêm do extrato (valor líquido). **Agenda** usa os proventos anunciados no site da B3 (últimos 12 meses, com data de pagamento), quantidade na data-com pelas operações gravadas e 15% de IR no JCP.
 

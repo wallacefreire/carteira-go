@@ -42,6 +42,7 @@ Uso:
   carteira mostrar <ATIVO>...               desfaz o ocultar
   carteira proventos [ANO]                  proventos recebidos por mês e por ativo
   carteira agenda                           proventos anunciados que ainda vão ser pagos
+  carteira evolucao                         rentabilidade por ano contra Ibovespa, CDI, IPCA, S&P 500 e IFIX
   carteira indicadores [ATIVO...]           indicadores dos balanços (padrão: carteira + observação)
   carteira explicar <ATIVO> <INDICADOR>     memória de cálculo (lucro, lucro_rec, pl, pl_rec,
                                             ev_ebitda, pvp, roe, roic, dl_ebitda, dl_pl, liquidez, beta,
@@ -154,6 +155,8 @@ func executar(args []string, saida io.Writer) error {
 		return a.proventos(args)
 	case "agenda":
 		return a.agenda(ctx)
+	case "evolucao":
+		return a.evolucao(ctx)
 	case "radar":
 		return a.radar(ctx, args)
 	case "filtro":

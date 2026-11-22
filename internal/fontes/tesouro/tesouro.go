@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -27,19 +28,44 @@ type Preco struct {
 	PUCompra   float64 // quanto custa comprar
 }
 
-// Ler devolve o preço mais recente de cada título. Colunas:
-// Tipo Titulo;Data Vencimento;Data Base;Taxa Compra Manha;Taxa Venda Manha;PU Compra Manha;PU Venda Manha;PU Base Manha
+// Ler devolve o preço mais recente de cada título.
 func Ler(caminho string) (map[string]Preco, error) {
-	f, err := os.Open(caminho)
-	if err != nil {
-		return nil, err
+	precos := map[string]Preco{}
+	err := percorrer(caminho, func(p Preco) {
+		if atual, ok := precos[p.Titulo]; !ok || p.DataBase.After(atual.DataBase) {
+			precos[p.Titulo] = p
+		}
+	})
+	return precos, err
+}
+
+// Historico devolve todos os preços dos títulos pedidos, em ordem de data.
+func Historico(caminho string, titulos map[string]bool) (map[string][]Preco, error) {
+	hist := map[string][]Preco{}
+	err := percorrer(caminho, func(p Preco) {
+		if titulos[p.Titulo] {
+			hist[p.Titulo] = append(hist[p.Titulo], p)
+		}
+	})
+	for _, l := range hist {
+		slices.SortFunc(l, func(a, b Preco) int { return a.DataBase.Compare(b.DataBase) })
 	}
-	defer f.Close()
-	r := csv.NewReader(f)
+	return hist, err
+}
+
+// percorrer lê o CSV e chama f para cada linha válida. Colunas:
+// Tipo Titulo;Data Vencimento;Data Base;Taxa Compra Manha;Taxa Venda Manha;PU Compra Manha;PU Venda Manha;PU Base Manha
+func percorrer(caminho string, f func(Preco)) error {
+	arq, err := os.Open(caminho)
+	if err != nil {
+		return err
+	}
+	defer arq.Close()
+	r := csv.NewReader(arq)
 	r.Comma = ';'
 	cab, err := r.Read()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	col := map[string]int{}
 	for i, c := range cab {
@@ -47,18 +73,16 @@ func Ler(caminho string) (map[string]Preco, error) {
 	}
 	for _, c := range []string{"Tipo Titulo", "Data Vencimento", "Data Base", "PU Compra Manha", "PU Venda Manha"} {
 		if _, ok := col[c]; !ok {
-			return nil, fmt.Errorf("CSV do Tesouro sem a coluna %q: o formato mudou", c)
+			return fmt.Errorf("CSV do Tesouro sem a coluna %q: o formato mudou", c)
 		}
 	}
-
-	precos := map[string]Preco{}
 	for {
 		l, err := r.Read()
 		if err == io.EOF {
-			break
+			return nil
 		}
 		if err != nil {
-			return nil, err
+			return err
 		}
 		venc, err1 := formato.LerData(l[col["Data Vencimento"]])
 		base, err2 := formato.LerData(l[col["Data Base"]])
@@ -67,13 +91,9 @@ func Ler(caminho string) (map[string]Preco, error) {
 		if err1 != nil || err2 != nil || err3 != nil {
 			continue
 		}
-		p := Preco{
+		f(Preco{
 			Titulo:     strings.TrimSpace(l[col["Tipo Titulo"]]) + " " + strconv.Itoa(venc.Year()),
 			Vencimento: venc, DataBase: base, PUVenda: venda, PUCompra: compra,
-		}
-		if atual, ok := precos[p.Titulo]; !ok || p.DataBase.After(atual.DataBase) {
-			precos[p.Titulo] = p
-		}
+		})
 	}
-	return precos, nil
 }

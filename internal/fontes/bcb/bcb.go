@@ -1,6 +1,6 @@
 // Package bcb busca a cotação oficial do dólar (PTAX) na API de dados abertos
-// do Banco Central (Olinda), sem chave. A PTAX de cada dia útil sai por volta
-// das 13h.
+// do Banco Central (Olinda), sem chave, e as séries do SGS (CDI, IPCA). A PTAX
+// de cada dia útil sai por volta das 13h.
 package bcb
 
 import (
@@ -17,13 +17,14 @@ const urlBase = "https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata"
 
 // Cliente consulta o Banco Central.
 type Cliente struct {
-	HTTP *http.Client
-	URL  string // trocado nos testes
+	HTTP   *http.Client
+	URL    string // PTAX; trocado nos testes
+	URLSGS string // séries do SGS, com %d no lugar do código; trocado nos testes
 }
 
 // Novo cria o cliente com o endereço do Banco Central.
 func Novo() *Cliente {
-	return &Cliente{HTTP: &http.Client{Timeout: 20 * time.Second}, URL: urlBase}
+	return &Cliente{HTTP: &http.Client{Timeout: 20 * time.Second}, URL: urlBase, URLSGS: urlSGS}
 }
 
 // Cotacao é a PTAX de um dia, em reais por dólar.

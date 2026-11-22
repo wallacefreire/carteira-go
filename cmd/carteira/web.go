@@ -70,6 +70,9 @@ func (a *app) web(args []string) error {
 	mux.HandleFunc("GET /api/agenda", s.json(func(ctx context.Context, a *app, r *http.Request) (any, error) {
 		return a.dadosAgenda(ctx)
 	}))
+	mux.HandleFunc("GET /api/evolucao", s.json(func(ctx context.Context, a *app, r *http.Request) (any, error) {
+		return a.dadosEvolucao(ctx)
+	}))
 	mux.HandleFunc("GET /api/indicadores", s.json(func(ctx context.Context, a *app, r *http.Request) (any, error) {
 		return a.dadosIndicadores(ctx, r.URL.Query().Get("ativos"))
 	}))

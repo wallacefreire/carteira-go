@@ -54,6 +54,31 @@
 .visoes { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
 .visoes button[aria-pressed="true"] { background: var(--destaque); color: var(--destaque-texto); border-color: var(--destaque); }
 .dica { position: fixed; z-index: 30; pointer-events: none; background: var(--painel); color: var(--texto); border: 1px solid var(--borda); border-radius: 8px; padding: 6px 10px; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+/* gráficos de linha da evolução */
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chips button { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border-radius: 99px; }
+.chips button i { width: 14px; height: 3px; border-radius: 2px; }
+.chips button[aria-pressed="false"] { color: var(--suave); }
+.chips button[aria-pressed="false"] i { opacity: .25; }
+.chips button[aria-pressed="true"] { border-color: var(--texto); }
+.controles-evolucao { display: flex; gap: 12px 20px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+.controles-evolucao .visoes { margin: 0; }
+.controles-evolucao > * { min-width: 0; max-width: 100%; }
+.linha-grafico { position: relative; }
+.linha-grafico svg { display: block; width: 100%; overflow: visible; touch-action: pan-y; }
+.linha-grafico .eixo { font-size: 12px; fill: var(--suave); font-variant-numeric: tabular-nums; }
+.linha-grafico .grade { stroke: var(--borda); stroke-width: 1; }
+.linha-grafico .zero { stroke: var(--suave); stroke-width: 1; }
+.linha-grafico .serie { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.linha-grafico .serie.principal { stroke-width: 2.75; }
+.linha-grafico .rotulo-fim { font-size: 12px; fill: var(--texto); font-variant-numeric: tabular-nums; }
+.linha-grafico .mira { stroke: var(--suave); stroke-width: 1; stroke-dasharray: 3 3; }
+.linha-grafico .ponto { stroke: var(--painel); stroke-width: 2; }
+.dica table { border-collapse: collapse; }
+.dica td { padding: 1px 0 1px 12px; border: none; background: none !important; text-align: right; }
+.dica td:first-child { padding-left: 0; text-align: left; position: static; }
+.dica i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+td.destaque, th.destaque { font-weight: 650; }
 html { background: var(--fundo); }
 body { margin: 0; min-height: 100vh; background: var(--fundo); color: var(--texto); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 header { position: sticky; top: 0; z-index: 5; background: var(--painel); border-bottom: 1px solid var(--borda); }
@@ -151,6 +176,7 @@ tr.subitem td:first-child { padding-left: 28px; }
   </div>
   <nav id="abas">
     <button data-aba="carteira" class="ativa">Carteira</button>
+    <button data-aba="evolucao">Evolução</button>
     <button data-aba="proventos">Proventos</button>
     <button data-aba="agenda">Agenda</button>
     <button data-aba="indicadores">Indicadores</button>
@@ -204,13 +230,13 @@ $("#abas").addEventListener("click", (ev) => {
   if (b) abrirAba(b.dataset.aba);
 });
 
-const ABAS = ["carteira", "proventos", "agenda", "indicadores", "radar"];
+const ABAS = ["carteira", "evolucao", "proventos", "agenda", "indicadores", "radar"];
 function abrirAba(nome) {
   abaAtual = nome;
   history.replaceState(null, "", nome === "carteira" ? location.pathname : "#" + nome);
   for (const b of document.querySelectorAll("#abas button")) b.classList.toggle("ativa", b.dataset.aba === nome);
   fecharPainel();
-  ({ carteira: abaCarteira, proventos: abaProventos, agenda: abaAgenda, indicadores: abaIndicadores, radar: abaRadar })[nome]();
+  ({ carteira: abaCarteira, evolucao: abaEvolucao, proventos: abaProventos, agenda: abaAgenda, indicadores: abaIndicadores, radar: abaRadar })[nome]();
 }
 
 // ---------- Carteira ----------
@@ -353,6 +379,225 @@ function ligarVisoes(d) {
     b.onclick = () => { visaoGrafico = b.dataset.visao; document.querySelector(".dica")?.setAttribute("hidden", ""); desenharGrafico(d); };
   });
 }
+
+// ---------- Evolução ----------
+// Cor fixa por série (nunca pela posição na lista): desligar uma não repinta as outras.
+const CORES_EVOLUCAO = { carteira: "var(--serie-1)", ibov: "var(--serie-2)", cdi: "var(--serie-3)", ipca: "var(--serie-4)", sp500: "var(--serie-5)", ifix: "var(--serie-6)" };
+const PERIODOS = [["12m", "12 meses"], ["ano", "No ano"], ["2a", "2 anos"], ["5a", "5 anos"], ["tudo", "Tudo"]];
+let periodoEvolucao = "12m";
+let seriesLigadas = new Set(["carteira", "ibov", "cdi"]);
+try { const s = JSON.parse(localStorage.getItem("seriesEvolucao")); if (Array.isArray(s) && s.length) seriesLigadas = new Set(s); } catch {}
+try { const p = localStorage.getItem("periodoEvolucao"); if (PERIODOS.some(([v]) => v === p)) periodoEvolucao = p; } catch {}
+const pct1 = (f) => (f > 0 ? "+" : "") + (f * 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "%";
+const MESES_CURTOS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+const dataBR = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+
+async function abaEvolucao() {
+  if (!cache.evolucao) {
+    carregando("Calculando a evolução… (na primeira vez baixa o CDI, o IPCA e os preços do Tesouro)");
+    try { cache.evolucao = await api("/api/evolucao"); } catch (e) { return erro(e); }
+  }
+  if (abaAtual !== "evolucao") return;
+  const d = cache.evolucao;
+  if (d.vazia) { $("#conteudo").innerHTML = `<section class="bloco"><p>Sem operações para calcular a evolução.</p></section>`; return; }
+
+  const ini = inicioPeriodo(d, periodoEvolucao);
+  const ult = d.datas.length - 1;
+  const ret = (s) => retornoSerie(s.valores, ini, ult);
+  const todasLigadas = d.series.every((s) => seriesLigadas.has(s.chave));
+  let h = `<div class="controles-evolucao">
+    <div class="visoes" role="group" aria-label="Período">${PERIODOS.map(([v, r]) => `<button data-periodo="${v}" aria-pressed="${periodoEvolucao === v}">${r}</button>`).join("")}</div>
+    <div class="chips" role="group" aria-label="Linhas do gráfico">${d.series.map((s) => `<button data-serie="${s.chave}" aria-pressed="${seriesLigadas.has(s.chave)}" title="${esc(s.fonte)}"><i style="background:${CORES_EVOLUCAO[s.chave]}"></i>${esc(s.nome)}</button>`).join("")}
+      <button data-serie="*" title="${todasLigadas ? "Deixa só a carteira" : "Liga todas as linhas"}">${todasLigadas ? "Só a carteira" : "Todas"}</button></div>
+  </div>`;
+  const rc = ret(d.series[0]);
+  h += `<div class="cards">
+    <div class="card"><div class="rotulo">Carteira</div><div class="valor ${cor(rc ?? 0)}">${rc == null ? "-" : pct1(rc)}</div><div class="sub">${esc(dataBR(d.datas[ini]))} a ${esc(d.ate)}</div></div>
+    ${d.series.slice(1).filter((s) => seriesLigadas.has(s.chave)).map((s) => {
+      const r = ret(s);
+      const dif = r != null && rc != null ? `<div class="sub">carteira ${rc >= r ? "acima" : "abaixo"} em ${(Math.abs(rc - r) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} p.p.</div>` : "";
+      return `<div class="card"><div class="rotulo">${esc(s.nome)}</div><div class="valor">${r == null ? "-" : pct1(r)}</div>${dif}</div>`;
+    }).join("")}
+  </div>`;
+  const patIni = d.patrimonio[ini], pat = d.patrimonio[ult], aportes = d.investido[ult] - d.investido[ini];
+  h += `<section class="bloco"><h2>Rentabilidade <small>acumulada no período · método de cotas: aporte não conta como ganho</small></h2><div class="linha-grafico" id="graf-rent"></div></section>`;
+  h += `<section class="bloco"><h2>Patrimônio <small>em R$ · no período: começou com ${esc(moedaBR(patIni))}, entraram ${esc(moedaBR(aportes))} (compras − vendas) e vale ${esc(moedaBR(pat))} · a linha tracejada é quanto valeria sem nenhum rendimento</small></h2><div class="linha-grafico" id="graf-pat"></div></section>`;
+
+  h += `<section class="bloco"><h2>Por ano <small>* ano incompleto</small></h2><div class="rolagem"><table><thead><tr><th></th>${d.series.map((s, i) => `<th class="${i === 0 ? "destaque" : ""}">${esc(s.nome)}</th>`).join("")}</tr></thead><tbody>
+    ${d.rentabilidade.map((l) => `<tr><td>${esc(l.periodo)}${l.parcial ? "*" : ""}</td>${l.valores.map((v, i) => `<td class="${i === 0 ? "destaque " : ""}${l.nums[i] == null ? "sem" : cor(l.nums[i])}">${esc(v)}</td>`).join("")}</tr>`).join("")}
+    </tbody></table></div>
+    <details style="margin-top:12px"><summary style="cursor:pointer">Como é calculado</summary>
+      <p class="legenda">A carteira segue o <b>método de cotas</b>, o mesmo dos fundos. No primeiro dia ela vale 1 cota, e o rendimento de cada pregão é (valor de hoje − dinheiro que entrou hoje) ÷ valor de ontem, com "dinheiro que entrou" = compras − vendas − proventos recebidos. Assim aporte não vira ganho, e provento conta como rendimento. Ativos e operações de terceiros ficam de fora. As datas são as do extrato da B3, que traz a liquidação (D+1), não o dia do pregão.</p>
+      <ul class="notas">${d.series.map((s) => `<li><b>${esc(s.nome)}</b>: ${esc(s.fonte)}</li>`).join("")}</ul>
+      <p class="legenda">Os ETFs cobram taxa de administração, então rendem um pouco abaixo do índice. O IPCA sai por volta do dia 10 do mês seguinte, e a linha para no último mês publicado.</p></details>
+    ${lista("Observações", d.notas)}</section>`;
+  $("#conteudo").innerHTML = h;
+
+  document.querySelectorAll("[data-periodo]").forEach((b) => b.onclick = () => {
+    periodoEvolucao = b.dataset.periodo;
+    try { localStorage.setItem("periodoEvolucao", periodoEvolucao); } catch {}
+    abaEvolucao();
+  });
+  document.querySelectorAll("[data-serie]").forEach((b) => b.onclick = () => {
+    const k = b.dataset.serie;
+    if (k === "*") seriesLigadas = todasLigadas ? new Set(["carteira"]) : new Set(d.series.map((s) => s.chave));
+    else if (seriesLigadas.has(k)) seriesLigadas.delete(k);
+    else seriesLigadas.add(k);
+    try { localStorage.setItem("seriesEvolucao", JSON.stringify([...seriesLigadas])); } catch {}
+    abaEvolucao();
+  });
+  desenharEvolucao(d, ini);
+}
+
+// inicioPeriodo: índice do pregão base (o retorno conta a partir do fechamento dele).
+// "No ano" usa o último pregão do ano anterior, como a tabela por ano.
+function inicioPeriodo(d, p) {
+  const n = d.datas.length, ult = d.datas[n - 1];
+  if (p === "tudo") return 0;
+  let corte;
+  if (p === "ano") corte = `${Number(ult.slice(0, 4)) - 1}-12-31`;
+  else corte = `${Number(ult.slice(0, 4)) - { "12m": 1, "2a": 2, "5a": 5 }[p]}${ult.slice(4)}`;
+  let i = 0;
+  while (i + 1 < n && d.datas[i + 1] <= corte) i++;
+  return i;
+}
+// retornoSerie: do primeiro valor a partir de ini até o último que houver.
+function retornoSerie(v, ini, fim) {
+  let a = ini; while (a <= fim && v[a] == null) a++;
+  let b = fim; while (b > a && v[b] == null) b--;
+  return b > a && v[a] ? v[b] / v[a] - 1 : null;
+}
+
+// marcasEixo: passo "redondo" (1, 2, 2,5, 5 × 10^k) para ter umas 5 marcas.
+function marcasEixo(min, max, qtd) {
+  if (min === max) { min -= Math.abs(min) * 0.1 || 1; max += Math.abs(max) * 0.1 || 1; }
+  const bruto = (max - min) / qtd, pot = Math.pow(10, Math.floor(Math.log10(bruto)));
+  const passo = [1, 2, 2.5, 5, 10].map((m) => m * pot).find((p) => p >= bruto);
+  const marcas = [];
+  for (let v = Math.floor(min / passo) * passo; v < max + passo * 0.999; v += passo) marcas.push(Math.round(v / passo) * passo);
+  return marcas;
+}
+
+function desenharEvolucao(d, ini) {
+  const fim = d.datas.length - 1;
+  const datas = d.datas.slice(ini);
+  // Rentabilidade: cada série rebaseada em 0% no começo do período.
+  const linhas = d.series.filter((s) => seriesLigadas.has(s.chave)).map((s) => {
+    let a = ini; while (a <= fim && s.valores[a] == null) a++;
+    const base = s.valores[a];
+    return { nome: s.nome, cor: CORES_EVOLUCAO[s.chave], principal: s.chave === "carteira",
+      v: s.valores.slice(ini).map((x) => (x == null || !base ? null : x / base - 1)) };
+  });
+  graficoLinhas($("#graf-rent"), datas, linhas, { pct: true, zero: true, rotulos: linhas.length <= 4 });
+  graficoLinhas($("#graf-pat"), datas, [
+    { nome: "Patrimônio", cor: "var(--serie-1)", principal: true, v: d.patrimonio.slice(ini) },
+    // Quanto haveria se nada tivesse rendido: o patrimônio do começo mais o que entrou (compras − vendas).
+    { nome: "Sem rendimento", cor: "var(--suave)", tracejado: true, v: d.investido.slice(ini).map((x) => d.patrimonio[ini] + x - d.investido[ini]) },
+  ], { pct: false, zero: true, rotulos: true });
+}
+
+// graficoLinhas desenha linhas em SVG: eixo de datas, marcas no eixo Y,
+// rótulo no fim de cada linha (até 4) e mira com dica ao passar o mouse ou o dedo.
+function graficoLinhas(el, datas, linhas, op) {
+  if (!el) return;
+  const fmt = op.pct ? pct1 : (v) => "R$ " + moedaBR(v);
+  const fmtEixo = op.pct
+    ? (v) => (v * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + "%"
+    : (v) => (Math.abs(v) >= 1000 ? (v / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " mil" : v.toLocaleString("pt-BR"));
+  if (!linhas.length) { el.innerHTML = `<p class="legenda">Ligue ao menos uma linha nos botões acima.</p>`; return; }
+  const W = Math.max(280, el.clientWidth), estreito = W < 560;
+  const H = estreito ? 240 : 320, me = estreito ? 46 : 58, md = op.rotulos ? (estreito ? 64 : 170) : 14, mt = 10, mb = 26;
+  const n = datas.length;
+  let min = Infinity, max = -Infinity;
+  for (const l of linhas) for (const x of l.v) if (x != null) { min = Math.min(min, x); max = Math.max(max, x); }
+  if (!isFinite(min)) { el.innerHTML = `<p class="legenda">Sem dados no período.</p>`; return; }
+  if (op.zero) { min = Math.min(min, 0); max = Math.max(max, 0); }
+  const marcas = marcasEixo(min, max, estreito ? 4 : 5);
+  const y0 = marcas[0], y1 = marcas[marcas.length - 1];
+  const X = (i) => me + (n > 1 ? (i / (n - 1)) * (W - me - md) : 0);
+  const Y = (v) => mt + (1 - (v - y0) / (y1 - y0)) * (H - mt - mb);
+
+  let svg = marcas.map((m) => `<line class="${op.zero && Math.abs(m) < 1e-12 ? "zero" : "grade"}" x1="${me}" x2="${W - md}" y1="${Y(m)}" y2="${Y(m)}"></line><text class="eixo" x="${me - 8}" y="${Y(m) + 4}" text-anchor="end">${fmtEixo(m)}</text>`).join("");
+  // Datas no eixo X: anos (período longo) ou meses.
+  const anos = (Date.parse(datas[n - 1]) - Date.parse(datas[0])) / 3.156e10;
+  const passoMes = anos > 2.5 ? 12 : anos > 1.2 ? 3 : anos > 0.5 ? 2 : 1;
+  let ultimaX = -Infinity;
+  for (let i = 1; i < n; i++) {
+    if (datas[i].slice(0, 7) === datas[i - 1].slice(0, 7)) continue;
+    const mes = Number(datas[i].slice(5, 7)) - 1;
+    if (mes % passoMes) continue;
+    const x = X(i);
+    if (x - ultimaX < 52) continue;
+    ultimaX = x;
+    const txt = passoMes === 12 ? datas[i].slice(0, 4) : `${MESES_CURTOS[mes]}/${datas[i].slice(2, 4)}`;
+    svg += `<line class="grade" x1="${x}" x2="${x}" y1="${H - mb}" y2="${H - mb + 4}"></line><text class="eixo" x="${x}" y="${H - 6}" text-anchor="middle">${txt}</text>`;
+  }
+  // Linhas (a principal por cima).
+  const ordem = [...linhas].sort((a, b) => (a.principal ? 1 : 0) - (b.principal ? 1 : 0));
+  for (const l of ordem) {
+    let dd = "", caneta = false;
+    l.v.forEach((x, i) => {
+      if (x == null) { caneta = false; return; }
+      dd += `${caneta ? "L" : "M"}${X(i).toFixed(1)},${Y(x).toFixed(1)}`;
+      caneta = true;
+    });
+    svg += `<path class="serie${l.principal ? " principal" : ""}" d="${dd}" stroke="${l.cor}"${l.tracejado ? ' stroke-dasharray="6 4"' : ""}></path>`;
+  }
+  // Rótulo no fim de cada linha, afastando os que se encostam.
+  if (op.rotulos) {
+    const fins = linhas.map((l) => {
+      let i = l.v.length - 1; while (i >= 0 && l.v[i] == null) i--;
+      return i < 0 ? null : { l, i, y: Y(l.v[i]) };
+    }).filter(Boolean).sort((a, b) => a.y - b.y);
+    for (let k = 1; k < fins.length; k++) fins[k].y = Math.max(fins[k].y, fins[k - 1].y + 15);
+    const excesso = fins.length ? fins[fins.length - 1].y - (H - mb) : 0;
+    if (excesso > 0) fins.forEach((f) => (f.y -= excesso));
+    for (const f of fins) {
+      svg += `<circle cx="${X(f.i)}" cy="${Y(f.l.v[f.i])}" r="3.5" fill="${f.l.cor}"></circle><text class="rotulo-fim" x="${X(n - 1) + 8}" y="${f.y + 4}">${esc(estreito ? "" : f.l.nome + " ")}${fmt(f.l.v[f.i])}</text>`;
+    }
+  }
+  svg += `<g class="mira-grupo" style="display:none"><line class="mira" y1="${mt}" y2="${H - mb}"></line>${linhas.map((l) => `<circle class="ponto" r="4.5" fill="${l.cor}"></circle>`).join("")}</g>`;
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="${esc(linhas.map((l) => l.nome).join(", "))}">${svg}</svg>`;
+
+  // Mira: o pregão mais perto do ponteiro, com o valor de cada linha.
+  const s = el.querySelector("svg"), g = el.querySelector(".mira-grupo");
+  const pontos = g.querySelectorAll("circle"), mira = g.querySelector("line");
+  let dica = document.querySelector(".dica");
+  if (!dica) { dica = document.createElement("div"); dica.className = "dica"; dica.hidden = true; document.body.appendChild(dica); }
+  const sair = () => { g.style.display = "none"; dica.hidden = true; };
+  const mover = (ev) => {
+    const r = s.getBoundingClientRect();
+    const x = ((ev.clientX - r.left) / r.width) * W;
+    if (x < me - 6 || x > W - md + 6) { sair(); return; }
+    const i = Math.max(0, Math.min(n - 1, Math.round(((x - me) / (W - me - md)) * (n - 1))));
+    g.style.display = "";
+    mira.setAttribute("x1", X(i)); mira.setAttribute("x2", X(i));
+    const valores = [];
+    linhas.forEach((l, k) => {
+      const v = l.v[i];
+      pontos[k].style.display = v == null ? "none" : "";
+      if (v == null) return;
+      pontos[k].setAttribute("cx", X(i)); pontos[k].setAttribute("cy", Y(v));
+      valores.push({ l, v });
+    });
+    valores.sort((a, b) => b.v - a.v);
+    dica.innerHTML = `<b>${dataBR(datas[i])}</b><table>${valores.map((o) => `<tr><td><i style="background:${o.l.cor}"></i>${esc(o.l.nome)}</td><td>${fmt(o.v)}</td></tr>`).join("")}</table>`;
+    dica.hidden = false;
+    const esquerda = ev.clientX + 16 + dica.offsetWidth > window.innerWidth;
+    dica.style.left = (esquerda ? ev.clientX - dica.offsetWidth - 16 : ev.clientX + 16) + "px";
+    dica.style.top = Math.max(8, ev.clientY - dica.offsetHeight - 12) + "px";
+  };
+  s.addEventListener("pointermove", mover);
+  s.addEventListener("pointerdown", mover);
+  s.addEventListener("pointerleave", sair);
+}
+let redesenho;
+window.addEventListener("resize", () => {
+  clearTimeout(redesenho);
+  redesenho = setTimeout(() => {
+    if (abaAtual === "evolucao" && cache.evolucao && !cache.evolucao.vazia) desenharEvolucao(cache.evolucao, inicioPeriodo(cache.evolucao, periodoEvolucao));
+  }, 150);
+});
 
 // ---------- Proventos ----------
 const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];

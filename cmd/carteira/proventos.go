@@ -61,25 +61,14 @@ func (a *app) buscarCotacao(ctx context.Context, t string) (armazenamento.Cotaca
 	}
 }
 
-// precosTesouro baixa o CSV do Tesouro Transparente (~15 MB) se tiver mais
-// de 12 horas e lê o preço mais recente de cada título.
+// precosTesouro lê o preço mais recente de cada título.
 func (a *app) precosTesouro(ctx context.Context) (map[string]tesouro.Preco, error) {
 	if a.tesouro != nil {
 		return a.tesouro, nil
 	}
-	caminho := filepath.Join(a.dirDados, "tesouro", "PrecoTaxaTesouroDireto.csv")
-	if info, err := os.Stat(caminho); err != nil || a.agora().Sub(info.ModTime()) > validadeTesouro {
-		if err := os.MkdirAll(filepath.Dir(caminho), 0o755); err != nil {
-			return nil, err
-		}
-		fmt.Fprintln(a.saida, "baixando os preços do Tesouro Direto (Tesouro Transparente)…")
-		cli := &http.Client{Timeout: 5 * time.Minute}
-		if err := baixar.Arquivo(ctx, cli, tesouro.URL, caminho); err != nil {
-			if _, errVelho := os.Stat(caminho); errVelho != nil {
-				return nil, fmt.Errorf("preços do Tesouro: %w", err)
-			}
-			fmt.Fprintf(a.saida, "aviso: não consegui atualizar os preços do Tesouro (%v); usando o arquivo anterior\n", err)
-		}
+	caminho, err := a.arquivoTesouro(ctx)
+	if err != nil {
+		return nil, err
 	}
 	ps, err := tesouro.Ler(caminho)
 	if err != nil {
@@ -87,6 +76,26 @@ func (a *app) precosTesouro(ctx context.Context) (map[string]tesouro.Preco, erro
 	}
 	a.tesouro = ps
 	return ps, nil
+}
+
+// arquivoTesouro baixa o CSV do Tesouro Transparente (~15 MB) se tiver mais
+// de 12 horas e devolve onde ele está.
+func (a *app) arquivoTesouro(ctx context.Context) (string, error) {
+	caminho := filepath.Join(a.dirDados, "tesouro", "PrecoTaxaTesouroDireto.csv")
+	if info, err := os.Stat(caminho); err != nil || a.agora().Sub(info.ModTime()) > validadeTesouro {
+		if err := os.MkdirAll(filepath.Dir(caminho), 0o755); err != nil {
+			return "", err
+		}
+		fmt.Fprintln(a.saida, "baixando os preços do Tesouro Direto (Tesouro Transparente)…")
+		cli := &http.Client{Timeout: 5 * time.Minute}
+		if err := baixar.Arquivo(ctx, cli, tesouro.URL, caminho); err != nil {
+			if _, errVelho := os.Stat(caminho); errVelho != nil {
+				return "", fmt.Errorf("preços do Tesouro: %w", err)
+			}
+			fmt.Fprintf(a.saida, "aviso: não consegui atualizar os preços do Tesouro (%v); usando o arquivo anterior\n", err)
+		}
+	}
+	return caminho, nil
 }
 
 // ---------- classes ----------
