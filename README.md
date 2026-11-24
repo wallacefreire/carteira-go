@@ -10,7 +10,7 @@ $ carteira explicar SOJA3 pl
 
 ## O que faz
 
-- **Carteira:** importa o extrato de Movimentação da B3 (todas as corretoras), calcula o preço médio pelo método da Receita e mostra posição, resultado e pesos por ativo e por classe, com alerta de teto por ativo.
+- **Carteira:** importa o extrato de Movimentação da B3 (todas as corretoras), calcula o preço médio pelo método da Receita e mostra posição, resultado e pesos por ativo e por classe.
 - **Indicadores** (5 anos + últimos 12 meses + média): lucro, P/L, ROE, ROIC, dívida líquida/EBITDA, dívida líquida/PL e liquidez corrente, a partir dos balanços da CVM (DFP e ITR).
 - **Risco:** beta, volatilidade e correlação com a carteira, com preços diários da B3 ajustados por proventos, desdobramentos e grupamentos.
 - **Radar:** aplica um filtro configurável a todas as ações da B3 e ordena as aprovadas.

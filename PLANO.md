@@ -6,7 +6,7 @@ Controle de investimentos em Go, com dados reais e indicadores calculados por n�
 
 ### Carteira
 - Posição por ativo: quantidade, preço médio, cotação atual, valor e resultado (R$ e %)
-- **Peso por ativo e por classe** (ações, Tesouro, cripto), com alerta quando um ativo passar do teto (25%)
+- **Peso por ativo e por classe** (ações, Tesouro, cripto)
 - **Dividendos recebidos**, por ativo e por mês, e o total
 - Classes cobertas: ações da B3, Tesouro IPCA+ e BTC
 
@@ -107,7 +107,7 @@ Carteira/
 
 ## 4. Etapas
 
-1. **Fase 1 — Carteira + lista de observação (feita):** importação do extrato de Movimentação da B3, lançamento manual, preço médio, cotação via brapi, pesos e teto. Saída no terminal.
+1. **Fase 1 — Carteira + lista de observação (feita):** importação do extrato de Movimentação da B3, lançamento manual, preço médio, cotação via brapi, pesos. Saída no terminal.
 2. **Fase 2 — Indicadores:**
    - **2a (feita):** balanços da CVM (DFP/ITR), lucro, P/L atual, ROE, ROIC, dívida líquida/EBITDA e /PL e liquidez corrente: 5 anos + 12 meses + média, com memória de cálculo (`carteira explicar`).
    - **2b (feita):** histórico de preços pelo COTAHIST da B3, ajustado por proventos e desdobramentos: P/L ano a ano, beta, volatilidade e correlação com a carteira.
@@ -118,7 +118,7 @@ Carteira/
    - **Layout:** abas Carteira, Proventos, Agenda, Indicadores e Radar; botão Importar sempre visível; cards de resumo no topo; ⓘ abre painel lateral com a memória de cálculo; tema claro/escuro; feito para caber no celular.
 
 ## 5. Decisões
-- Teto por ativo: **25%** (muda com `carteira teto`).
+- Sem teto por ativo (retirado em 24/11/2026).
 - Código: Claude escreve, Wallace revisa.
 - Importação do extrato da B3 antecipada para a Fase 1.
 - Pendente: criar o token no brapi.dev (gratuito) e definir a variável `BRAPI_TOKEN`.

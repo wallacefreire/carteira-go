@@ -120,7 +120,6 @@ tr.total td { font-weight: 650; border-bottom: none; }
 .etiqueta { display: inline-block; font-size: 12px; padding: 1px 7px; border-radius: 99px; background: var(--alerta-fundo); color: var(--alerta-texto); margin-left: 6px; }
 .barra { display: inline-block; width: 60px; height: 6px; background: var(--borda); border-radius: 3px; vertical-align: middle; margin-left: 6px; overflow: hidden; }
 .barra i { display: block; height: 100%; background: var(--destaque); }
-.barra i.acima { background: var(--alerta-texto); }
 ul.notas { margin: 6px 0 0; padding-left: 18px; color: var(--suave); font-size: 13px; }
 .aviso-topo { background: var(--alerta-fundo); color: var(--alerta-texto); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .aviso-topo span { flex: 1; }
@@ -260,12 +259,12 @@ async function abaCarteira() {
     <div class="card"><div class="rotulo">Proventos (últimos 12 meses)</div><div class="valor">R$ ${esc(d.proventos12m)}</div>${d.proventosDesde ? `<div class="sub">R$ ${esc(d.proventos)} desde ${esc(d.proventosDesde)}</div>` : ""}</div>
     <div class="card"><div class="rotulo">Resultado das vendas já feitas</div><div class="valor">R$ ${esc(d.realizado)}</div></div>
   </div>`;
-  h += `<section class="bloco"><h2>Posição <small>valores em R$ · teto por ativo ${esc(d.teto)}</small></h2><div class="rolagem"><table>
+  h += `<section class="bloco"><h2>Posição <small>valores em R$</small></h2><div class="rolagem"><table>
     <thead><tr><th>Ativo</th><th>Qtd</th><th>Preço médio</th><th>Cotação</th><th>Valor</th><th>Resultado</th><th>%</th><th>Peso</th></tr></thead><tbody>`;
   for (const l of d.linhas) {
     const c = cor(l.resultadoNum);
-    const barra = l.peso === "-" ? "" : `<span class="barra"><i class="${l.acimaTeto ? "acima" : ""}" style="width:${Math.min(100, l.pesoNum * 100)}%"></i></span>`;
-    h += `<tr><td>${esc(l.ticker)}${l.acimaTeto ? `<span class="etiqueta">acima do teto</span>` : ""}</td><td>${esc(l.qtd)}</td><td>${esc(l.precoMedio)}</td><td>${esc(l.cotacao)}</td>
+    const barra = l.peso === "-" ? "" : `<span class="barra"><i style="width:${Math.min(100, l.pesoNum * 100)}%"></i></span>`;
+    h += `<tr><td>${esc(l.ticker)}</td><td>${esc(l.qtd)}</td><td>${esc(l.precoMedio)}</td><td>${esc(l.cotacao)}</td>
       <td>${esc(l.valor)}</td><td class="${c}">${esc(l.resultado)}</td><td class="${c}">${esc(l.resultadoPct)}</td><td>${esc(l.peso)}${barra}</td></tr>`;
   }
   h += `<tr class="total"><td>Total</td><td></td><td></td><td></td><td>${esc(d.total)}</td><td class="${cor(d.resultadoTotalNum)}">${esc(d.resultadoTotal)}</td><td class="${cor(d.resultadoTotalNum)}">${esc(d.resultadoTotalPct)}</td><td></td></tr></tbody></table></div>`;

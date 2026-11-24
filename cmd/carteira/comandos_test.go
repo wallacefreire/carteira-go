@@ -71,8 +71,8 @@ func TestImportarEPosicao(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := saida.String()
-	// BBAS3: 100 × 30 = 3.000 de 4.000 → 75% (acima do teto); SOJA3: 1.000 → 25%; GRND3 sem cotação.
-	for _, quer := range []string{"3.000,00", "75,0%", "acima do teto de 25,0%", "1.000,00", "4.000,00", "Proventos recebidos nos últimos 12 meses: R$ 0,00 (R$ 50,00 desde 2024)", "GRND3: sem cotação"} {
+	// BBAS3: 100 × 30 = 3.000 de 4.000 → 75%; SOJA3: 1.000 → 25%; GRND3 sem cotação.
+	for _, quer := range []string{"3.000,00", "75,0%", "1.000,00", "4.000,00", "Proventos recebidos nos últimos 12 meses: R$ 0,00 (R$ 50,00 desde 2024)", "GRND3: sem cotação"} {
 		if !strings.Contains(out, quer) {
 			t.Errorf("saída sem %q:\n%s", quer, out)
 		}

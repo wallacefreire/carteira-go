@@ -33,7 +33,6 @@ Uso:
   carteira observar <ATIVO>...              põe ativos na lista de observação
   carteira desobservar <ATIVO>...           tira ativos da lista de observação
   carteira observacao                       cotação dos ativos observados
-  carteira teto [PERCENTUAL]                mostra ou muda o teto por ativo (padrão 25; não vale para o Tesouro)
   carteira radar [todas]                    ações da B3 ordenadas pelo filtro (padrão: as 30 melhores)
   carteira filtro [CRITÉRIO VALOR]          mostra ou muda os limites do radar (ex.: carteira filtro roe 15)
   carteira tesouro [sim|nao]                liga a importação do Tesouro Direto do extrato (padrão: desligado)
@@ -167,8 +166,6 @@ func executar(args []string, saida io.Writer) error {
 		return a.ocultar(args)
 	case "mostrar":
 		return a.mostrar(args)
-	case "teto":
-		return a.mudarTeto(args)
 	case "web":
 		return a.web(args)
 	default:

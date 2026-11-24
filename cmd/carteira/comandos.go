@@ -26,8 +26,6 @@ import (
 // Cotação mais nova que isso é reaproveitada sem consultar o brapi de novo.
 const validadeCotacao = 15 * time.Minute
 
-const tetoPadrao = 25.0 // em %
-
 type app struct {
 	banco *armazenamento.Banco
 	brapi *brapi.Cliente
@@ -59,9 +57,8 @@ type linhaPosicao struct {
 	Peso         string  `json:"peso"`
 	PesoNum      float64 `json:"pesoNum"`      // fração, para a barra de peso na tela
 	ResultadoNum float64 `json:"resultadoNum"` // para a cor (ganho ou perda)
-	AcimaTeto    bool    `json:"acimaTeto"`
-	ValorNum     float64 `json:"valorNum"` // para o gráfico (zero sem cotação)
-	Grupo        string  `json:"grupo"`    // "Renda fixa" ou "Renda variável"
+	ValorNum     float64 `json:"valorNum"`     // para o gráfico (zero sem cotação)
+	Grupo        string  `json:"grupo"`        // "Renda fixa" ou "Renda variável"
 }
 
 // itemValor é um nome com valor (classe, tipo de provento, ativo de terceiros).
@@ -81,7 +78,6 @@ type dadosPosicao struct {
 	Data              string         `json:"data"`
 	Aviso             string         `json:"aviso"` // mês novo sem importação
 	MesNovo           bool           `json:"mesNovo"`
-	Teto              string         `json:"teto"`
 	Linhas            []linhaPosicao `json:"linhas"`
 	Total             string         `json:"total"`
 	ResultadoTotal    string         `json:"resultadoTotal"`
@@ -150,11 +146,6 @@ func (a *app) dadosPosicao(ctx context.Context) (dadosPosicao, error) {
 	}
 	d.Notas = notas
 	linhas, total := carteira.Pesos(pos, precos)
-	teto, err := a.teto()
-	if err != nil {
-		return d, err
-	}
-	d.Teto = formato.Pct(teto)
 
 	var custoCotado float64
 	for _, l := range linhas {
@@ -176,7 +167,6 @@ func (a *app) dadosPosicao(ctx context.Context) (dadosPosicao, error) {
 			}
 			lp.Peso = formato.Pct(l.Peso)
 			lp.PesoNum = l.Peso
-			lp.AcimaTeto = l.Peso > teto && !carteira.EhTesouro(l.Ticker)
 		}
 		d.Linhas = append(d.Linhas, lp)
 	}
@@ -247,12 +237,8 @@ func (a *app) posicao(ctx context.Context) error {
 	tw := tabwriter.NewWriter(a.saida, 0, 0, 2, ' ', tabwriter.AlignRight)
 	fmt.Fprintln(tw, "Ativo\tQtd\tPreço médio\tCotação\tValor\tResultado\t%\tPeso\t")
 	for _, l := range d.Linhas {
-		alerta := ""
-		if l.AcimaTeto {
-			alerta = "  acima do teto de " + d.Teto
-		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", l.Ticker, l.Qtd, l.PrecoMedio, l.Cotacao, l.Valor,
-			l.Resultado, l.ResultadoPct, l.Peso, alerta)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n", l.Ticker, l.Qtd, l.PrecoMedio, l.Cotacao, l.Valor,
+			l.Resultado, l.ResultadoPct, l.Peso)
 	}
 	fmt.Fprintf(tw, "Total\t\t\t\t%s\t%s\t%s\t\t\n", d.Total, d.ResultadoTotal, d.ResultadoTotalPct)
 	if err := tw.Flush(); err != nil {
@@ -469,11 +455,6 @@ func (a *app) avisoImportacao() string {
 	}
 	return fmt.Sprintf(">> Mês novo: importe o extrato de Movimentação da B3 (última importação em %s). investidor.b3.com.br > Extratos > Movimentação, depois: carteira importar movimentacao.xlsx",
 		ultima.Local().Format("02/01/2006"))
-}
-
-func (a *app) teto() (float64, error) {
-	pct, err := a.banco.ConfigNumero("teto", tetoPadrao)
-	return pct / 100, err
 }
 
 // ---------- importação e lançamentos ----------
@@ -756,28 +737,6 @@ func (a *app) observacao(ctx context.Context) error {
 		return err
 	}
 	imprimirLista(a.saida, "Cotações:", notas)
-	return nil
-}
-
-// ---------- teto ----------
-
-func (a *app) mudarTeto(args []string) error {
-	if len(args) == 0 {
-		t, err := a.teto()
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(a.saida, "Teto por ativo: %s\n", formato.Pct(t))
-		return nil
-	}
-	pct, err := formato.LerNumero(args[0])
-	if err != nil || pct <= 0 || pct > 100 {
-		return fmt.Errorf("teto inválido %q: use um percentual entre 0 e 100, ex.: carteira teto 25", args[0])
-	}
-	if err := a.banco.SalvarConfigNumero("teto", pct); err != nil {
-		return err
-	}
-	fmt.Fprintf(a.saida, "Teto por ativo agora é %s.\n", formato.Pct(pct/100))
 	return nil
 }
 
